@@ -108,5 +108,3 @@ src/systemcmds/topic_listener/listener_generated.cpp
 
 # colcon
 log/
-src/modules/mavlink/mavlink
-src/modules/mavlink/mavlink
