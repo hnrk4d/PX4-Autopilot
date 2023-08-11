@@ -1,0 +1,5 @@
+menuconfig DRIVERS_DISTANCE_SENSOR_TR24DA100
+	bool "tr24da100"
+	default n
+	---help---
+		Enable support for tr24da100

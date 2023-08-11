@@ -189,6 +189,7 @@ set(msg_files
 	TiltrotorExtraControls.msg
 	TimesyncStatus.msg
 	TrajectoryBezier.msg
+	ToolStatus.msg
 	TrajectorySetpoint.msg
 	TrajectoryWaypoint.msg
 	TransponderReport.msg

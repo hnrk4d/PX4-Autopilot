@@ -49,3 +49,5 @@ add_subdirectory(vl53l0x)
 add_subdirectory(vl53l1x)
 add_subdirectory(gy_us42)
 add_subdirectory(tf02pro)
+add_subdirectory(tr24da100)
+
