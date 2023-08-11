@@ -38,6 +38,7 @@
 #include <uORB/topics/cpuload.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/health_report.h>
+#include <uORB/topics/tool_status.h>
 #include <px4_platform_common/events.h>
 
 class MavlinkStreamSysStatus : public MavlinkStream
@@ -62,6 +63,7 @@ private:
 	uORB::Subscription _status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _cpuload_sub{ORB_ID(cpuload)};
 	uORB::Subscription _health_report{ORB_ID(health_report)};
+	uORB::Subscription _tool_status_sub{ORB_ID(tool_status)};
 	uORB::SubscriptionMultiArray<battery_status_s, battery_status_s::MAX_INSTANCES> _battery_status_subs{ORB_ID::battery_status};
 
 	using health_component_t = events::px4::enums::health_component_t;
@@ -105,7 +107,7 @@ private:
 
 	bool send() override
 	{
-		if (_status_sub.updated() || _cpuload_sub.updated() || _battery_status_subs.updated()) {
+	  if (_status_sub.updated() || _cpuload_sub.updated() || _battery_status_subs.updated() || _tool_status_sub.updated()) {
 			vehicle_status_s status{};
 			_status_sub.copy(&status);
 
@@ -116,6 +118,9 @@ private:
 			_health_report.copy(&health_report);
 
 			battery_status_s battery_status[battery_status_s::MAX_INSTANCES] {};
+
+			tool_status_s tool_status{};
+			_tool_status_sub.copy(&tool_status);
 
 			for (int i = 0; i < _battery_status_subs.size(); i++) {
 				_battery_status_subs[i].copy(&battery_status[i]);
@@ -174,6 +179,10 @@ private:
 				msg.current_battery = -1;
 				msg.battery_remaining = -1;
 			}
+
+			msg.tool_id    = tool_status.id;
+			msg.tool_data1 = tool_status.data_1;
+			msg.tool_data2 = tool_status.data_2;
 
 			mavlink_msg_sys_status_send_struct(_mavlink->get_channel(), &msg);
 			return true;

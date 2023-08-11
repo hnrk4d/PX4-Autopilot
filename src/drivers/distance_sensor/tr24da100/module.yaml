@@ -1,0 +1,6 @@
+module_name: TopRadar TR24DA100
+serial_config:
+    - command: tr24da100 start -d ${SERIAL_DEV}
+      port_config_param:
+        name: SENS_TR24DA_CFG
+        group: Sensors
