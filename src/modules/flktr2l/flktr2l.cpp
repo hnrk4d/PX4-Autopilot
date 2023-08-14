@@ -40,10 +40,10 @@ int Flktr2L::custom_command(int argc, char *argv[]) {
 
 
 int Flktr2L::task_spawn(int argc, char *argv[]) {
-  _task_id = px4_task_spawn_cmd("module",
+  _task_id = px4_task_spawn_cmd("flktr2l",
 				SCHED_DEFAULT,
 				SCHED_PRIORITY_DEFAULT,
-				1024,
+				2048,
 				(px4_main_t)&run_trampoline,
 				(char *const *)argv);
 
@@ -203,7 +203,7 @@ $ flktr2l start
 
 )DESCR_STR");
 
-  PRINT_MODULE_USAGE_NAME("module", "template");
+  PRINT_MODULE_USAGE_NAME("flktr2l", "system");
   PRINT_MODULE_USAGE_COMMAND("start");
   PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
