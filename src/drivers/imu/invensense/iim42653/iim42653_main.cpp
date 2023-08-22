@@ -1,6 +1,6 @@
 /****************************************************************************
  *
- *   Copyright (C) 2019 PX4 Development Team. All rights reserved.
+ *   Copyright (c) 2023 PX4 Development Team. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -31,59 +31,62 @@
  *
  ****************************************************************************/
 
-#pragma once
+#include "IIM42653.hpp"
 
-#include <px4_platform_common/sem.h>
+#include <px4_platform_common/getopt.h>
+#include <px4_platform_common/module.h>
 
-#include "LockGuard.hpp"
-
-template<class T, size_t N>
-class BlockingQueue
+void IIM42653::print_usage()
 {
-public:
+	PRINT_MODULE_USAGE_NAME("iim42653", "driver");
+	PRINT_MODULE_USAGE_SUBCATEGORY("imu");
+	PRINT_MODULE_USAGE_COMMAND("start");
+	PRINT_MODULE_USAGE_PARAMS_I2C_SPI_DRIVER(false, true);
+	PRINT_MODULE_USAGE_PARAM_INT('R', 0, 0, 35, "Rotation", true);
+	PRINT_MODULE_USAGE_PARAM_INT('C', 0, 0, 35000, "Input clock frequency (Hz)", true);
+	PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
+}
 
-	BlockingQueue()
-	{
-		px4_sem_init(&_sem_head, 0, N);
-		px4_sem_init(&_sem_tail, 0, 0);
+extern "C" int iim42653_main(int argc, char *argv[])
+{
+	int ch;
+	using ThisDriver = IIM42653;
+	BusCLIArguments cli{false, true};
+	cli.default_spi_frequency = SPI_SPEED;
+
+	while ((ch = cli.getOpt(argc, argv, "C:R:")) != EOF) {
+		switch (ch) {
+		case 'C':
+			cli.custom1 = atoi(cli.optArg());
+			break;
+
+		case 'R':
+			cli.rotation = (enum Rotation)atoi(cli.optArg());
+			break;
+		}
 	}
 
-	~BlockingQueue()
-	{
-		px4_sem_destroy(&_sem_head);
-		px4_sem_destroy(&_sem_tail);
+	const char *verb = cli.optArg();
+
+	if (!verb) {
+		ThisDriver::print_usage();
+		return -1;
 	}
 
-	void push(T newItem)
-	{
-		do {} while (px4_sem_wait(&_sem_head) != 0);
+	BusInstanceIterator iterator(MODULE_NAME, cli, DRV_IMU_DEVTYPE_IIM42653);
 
-		_data[_tail] = newItem;
-		_tail = (_tail + 1) % N;
-
-		px4_sem_post(&_sem_tail);
+	if (!strcmp(verb, "start")) {
+		return ThisDriver::module_start(cli, iterator);
 	}
 
-	T pop()
-	{
-		do {} while (px4_sem_wait(&_sem_tail) != 0);
-
-		T ret = _data[_head];
-		_head = (_head + 1) % N;
-
-		px4_sem_post(&_sem_head);
-
-		return ret;
+	if (!strcmp(verb, "stop")) {
+		return ThisDriver::module_stop(iterator);
 	}
 
-private:
+	if (!strcmp(verb, "status")) {
+		return ThisDriver::module_status(iterator);
+	}
 
-	px4_sem_t	_sem_head;
-	px4_sem_t	_sem_tail;
-
-	T _data[N] {};
-
-	size_t _head{0};
-	size_t _tail{0};
-
-};
+	ThisDriver::print_usage();
+	return -1;
+}
