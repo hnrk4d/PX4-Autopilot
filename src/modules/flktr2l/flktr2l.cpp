@@ -12,12 +12,14 @@
 
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/vehicle_command.h>
+#include <uORB/topics/sensor_gps.h>
 //#include <uORB/topics/adc_report.h>
 
 #include <parameters/param.h>
 
 int Flktr2L::print_status() {
-  PX4_INFO("Running, failsafe status : %d, scale : %lu", _failsafe, _package._scale);
+  PX4_INFO("Running, failsafe status : %d, scale : %lu", _failsafe, _teensy2px4._scale);
 
   return PX4_OK;
 }
@@ -117,6 +119,10 @@ Flktr2L::Flktr2L(const char *port, const speed_t speed)
   _port[sizeof(_port)-1]=0x0;
   _speed = speed;
   _timestamp_last_sample = hrt_absolute_time(); //reset time counter
+  _px42teensy._target_speed = 0;
+  _px42teensy._actual_speed = 0;
+  for(auto &x : _px42teensy._aux) x = -1;
+  _timestamp_last_write = hrt_absolute_time();
 }
 
 int Flktr2L::open_serial_port(const char *port, const speed_t speed) {  
@@ -200,25 +206,34 @@ int Flktr2L::open_serial_port(const char *port, const speed_t speed) {
 }
 
 void Flktr2L::_shiftAndAdd(uint8_t oneByte) {
-  uint8_t *pkg = (uint8_t*)&_package;
-  for(unsigned int i=1; i<sizeof(_package); ++i) {
+  uint8_t *pkg = (uint8_t*)&_teensy2px4;
+  for(unsigned int i=1; i<sizeof(_teensy2px4); ++i) {
     pkg[i-1] = pkg[i];
   }
-  pkg[sizeof(_package)-1] = oneByte;
+  //memmove(pkg, pkg+1, sizeof(_teensy2px4)-1);
+  pkg[sizeof(_teensy2px4)-1] = oneByte;
 }
 
 void Flktr2L::run() {
   struct vehicle_status_s vehicle_status;
+  struct vehicle_command_s vehicle_command;
+  struct sensor_gps_s sensor_gps;
   //struct adc_report_s adc_report;
 
   int vehicle_status_sub = orb_subscribe(ORB_ID(vehicle_status));
+  int vehicle_command_sub = orb_subscribe(ORB_ID(vehicle_command));
+  int sensor_gps_sub = orb_subscribe(ORB_ID(sensor_gps));
   //int adc_report_sub = orb_subscribe(ORB_ID(adc_report));
 
-  px4_pollfd_struct_t fds[1];
+  px4_pollfd_struct_t fds[3];
   fds[0].fd = vehicle_status_sub;
   fds[0].events = POLLIN;
-  //fds[1].fd = adc_report_sub;
-  //fds[1].events = POLLIN;
+  fds[1].fd = vehicle_command_sub;
+  fds[1].events = POLLIN;
+  fds[2].fd = sensor_gps_sub;
+  fds[2].events = POLLIN;
+  //fds[3].fd = adc_report_sub;
+  //fds[3].events = POLLIN;
 
   // initialize parameters
   parameters_update(true);
@@ -238,6 +253,7 @@ void Flktr2L::run() {
       continue;
     } else {
       if (fds[0].revents & POLLIN) {
+	//vehicle status
 	orb_copy(ORB_ID(vehicle_status), vehicle_status_sub, &vehicle_status);
 	
 	if(vehicle_status.failsafe != _failsafe) {
@@ -257,6 +273,51 @@ void Flktr2L::run() {
 	    _vehicle_command_pub.publish(vcmd);
 	  }
 	}
+      }
+      if (fds[1].revents & POLLIN) {
+	//vehicle command -> target speed
+	orb_copy(ORB_ID(vehicle_command), vehicle_command_sub, &vehicle_command);
+	if(vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_SPEED) {
+	  if(vehicle_command.param2 >= 0) {
+	    _px42teensy._target_speed = vehicle_command.param2;
+	    PX4_INFO("speed change: %.2f", (double)_px42teensy._target_speed);
+	  }
+	}
+	if(vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR) {
+	  _px42teensy._aux[0] = vehicle_command.param1;
+	  _px42teensy._aux[1] = vehicle_command.param2;
+	  _px42teensy._aux[2] = vehicle_command.param3;
+	  _px42teensy._aux[3] = vehicle_command.param4;
+	  _px42teensy._aux[4] = vehicle_command.param5;
+	  _px42teensy._aux[5] = vehicle_command.param6;
+ 	  PX4_INFO("actuators: %.2f %.2f %.2f %.2f %.2f %.2f",
+		   (double)_px42teensy._aux[0],
+		   (double)_px42teensy._aux[1],
+		   (double)_px42teensy._aux[2],
+		   (double)_px42teensy._aux[3],
+		   (double)_px42teensy._aux[4],
+		   (double)_px42teensy._aux[5]);
+	}
+	if(vehicle_command.command == vehicle_command_s::VEHICLE_CMD_ACTUATOR_TEST) {
+	  int aux = (int)vehicle_command.param4 - 301; //see actuator functions in https://docs.px4.io/main/en/advanced_config/parameter_reference.html
+	  if(aux >= 0 && aux < 6) {
+	    for(auto &x : _px42teensy._aux) x = -1;
+	    _px42teensy._aux[aux] = vehicle_command.param1;
+	    PX4_INFO("actuator test: %.2f %.2f %.2f %.2f %.2f %.2f",
+		     (double)_px42teensy._aux[0],
+		     (double)_px42teensy._aux[1],
+		     (double)_px42teensy._aux[2],
+		     (double)_px42teensy._aux[3],
+		     (double)_px42teensy._aux[4],
+		     (double)_px42teensy._aux[5]);
+	  }
+	}
+      }
+      if (fds[2].revents & POLLIN) {
+	//gps -> actual speed
+	orb_copy(ORB_ID(sensor_gps), sensor_gps_sub, &sensor_gps);
+	_px42teensy._actual_speed = sensor_gps.vel_m_s;
+	PX4_INFO("gps speed: %.2f", (double)_px42teensy._actual_speed);
       }
       /*
       if (fds[1].revents & POLLIN) {
@@ -278,17 +339,19 @@ void Flktr2L::run() {
 
     //UART communication
     open_serial_port(_port, _speed);
+
+    //read
     bool res = false;
     int bytes_read = 0;
     while((bytes_read = ::read(_file_descriptor, &_buffer[0], sizeof(_buffer))) >0) {	
       for(int i=0; i<bytes_read; i++) {
 	_shiftAndAdd(_buffer[i]);
-	if(_package._header[0] == sReferenceHeader[0] && _package._header[1] == sReferenceHeader[1]) {
+	if(_teensy2px4._header[0] == sReferenceHeader[0] && _teensy2px4._header[1] == sReferenceHeader[1]) {
 	  // we found a valid frame
 	  res = true;
 	  _msg.id=0;
 	  _msg.timestamp = hrt_absolute_time();
-	  _msg.data_1 = _package._scale;
+	  _msg.data_1 = _teensy2px4._scale;
 	  _msg.data_2 = 0;
 	  //PX4_INFO("%lu", _msg.data_1);
 	}
@@ -308,7 +371,14 @@ void Flktr2L::run() {
 	_file_descriptor = -1;
 	open_serial_port(_port, _speed);
       }
-      }
+    }
+
+    //write
+    if (hrt_elapsed_time(&_timestamp_last_write) > 1000000) {
+      _timestamp_last_write = hrt_absolute_time();
+      int bytes_written = ::write(_file_descriptor, &_px42teensy, sizeof(_px42teensy));
+      PX4_INFO("byte written: %d", bytes_written);
+    }
     
     px4_usleep(100000);
   }

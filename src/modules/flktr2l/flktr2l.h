@@ -76,14 +76,23 @@ private:
   const uint16_t sReferenceHeader[2] = {0xFFe5, 0xFFe5};
   static const int sBufferSize = 40;
 
-  //This must correspond 1:1 to the Package structure on the Teensy side!
-  struct Package {
+  //This must correspond 1:1 to the PckgTeensy2PX4 structure on the Teensy side!
+  struct PckgTeensy2PX4 {
     uint16_t _header[2];
-    uint8_t _size = sizeof(Flktr2L::Package);
+    uint8_t _size = sizeof(Flktr2L::PckgTeensy2PX4);
     uint32_t _scale = 0;
-  } _package;
+  } _teensy2px4;
+
+  struct PckgPX42Teensy {
+    uint16_t _header[2];
+    uint8_t _size = sizeof(Flktr2L::PckgPX42Teensy);
+    float _target_speed;
+    float _actual_speed;
+    float _aux[6];
+  } _px42teensy;
 
   void _shiftAndAdd(uint8_t oneByte); //shift by one byte and add one byte
   uint8_t _buffer[sBufferSize];
   hrt_abstime _timestamp_last_sample {};
+  hrt_abstime _timestamp_last_write {};
 };
