@@ -22,7 +22,7 @@ extern "C" __EXPORT int flktr2l_main(int argc, char *argv[]);
 
 class Flktr2L : public ModuleBase<Flktr2L>, public ModuleParams {
 public:
-  Flktr2L(const char *port, const speed_t speed = B115200);
+  Flktr2L(const char *port, const speed_t speed = B57600);
 
   virtual ~Flktr2L() = default;
 
@@ -73,7 +73,7 @@ private:
   speed_t _speed {};
   int _file_descriptor{-1};
 
-  const uint16_t sReferenceHeader[2] = {0xFFe5, 0xFFe5};
+  const uint16_t sReferenceHeader[2] = {0xFFe5, 0xFFe3};
   static const int sBufferSize = 40;
 
   //This must correspond 1:1 to the PckgTeensy2PX4 structure on the Teensy side!
@@ -84,11 +84,18 @@ private:
   } _teensy2px4;
 
   struct PckgPX42Teensy {
-    uint16_t _header[2];
-    uint8_t _size = sizeof(Flktr2L::PckgPX42Teensy);
+    const uint16_t _header[2] = {0xFFe5, 0xFFe3};
+    const uint8_t _size = sizeof(Flktr2L::PckgPX42Teensy);
     float _target_speed;
     float _actual_speed;
+    bool _is_test;
     float _aux[6];
+    void reset() {
+      _target_speed = 0;
+      _actual_speed = 0;
+      _is_test = false;
+      for(auto &x : _aux) x = -1;
+    }
   } _px42teensy;
 
   void _shiftAndAdd(uint8_t oneByte); //shift by one byte and add one byte
