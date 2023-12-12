@@ -80,7 +80,7 @@ $ tr24da100 stop
     PRINT_MODULE_USAGE_SUBCATEGORY("distance_sensor");
     PRINT_MODULE_USAGE_COMMAND_DESCR("start", "Start driver");
     PRINT_MODULE_USAGE_PARAM_STRING('d', "/dev/ttyS3", "<file:dev>", "Serial device", false);
-    PRINT_MODULE_USAGE_PARAM_INT('R', distance_sensor_s::ROTATION_FORWARD_FACING, 0, distance_sensor_s::ROTATION_FORWARD_FACING, "Sensor rotation - forward facing by default", true);
+    PRINT_MODULE_USAGE_PARAM_INT('R', distance_sensor_s::ROTATION_DOWNWARD_FACING, 0, distance_sensor_s::ROTATION_DOWNWARD_FACING, "Sensor rotation - downward facing by default", true);
     PRINT_MODULE_USAGE_COMMAND_DESCR("stop", "Stop driver");
     return PX4_OK;
   }
@@ -88,7 +88,7 @@ $ tr24da100 stop
 } // namespace tr24da100
 
 extern "C" __EXPORT int tr24da100_main(int argc, char *argv[]) {
-  uint8_t rotation = distance_sensor_s::ROTATION_FORWARD_FACING;
+  uint8_t rotation = distance_sensor_s::ROTATION_DOWNWARD_FACING;
   const char *device_path = nullptr;
   int ch;
   int myoptind = 1;
