@@ -21,7 +21,7 @@
 #include <parameters/param.h>
 
 int Flktr2L::print_status() {
-  PX4_INFO("Running, failsafe status : %d, scale : %lu", _failsafe, _teensy2px4._scale);
+  PX4_INFO("Running - failsafe/scale/downw/forw : %d/%lu/%.2f/%.2f", _failsafe, _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
 
   return PX4_OK;
 }
@@ -116,10 +116,22 @@ Flktr2L *Flktr2L::instantiate(int argc, char *argv[]) {
 }
 
 Flktr2L::Flktr2L(const char *port, const speed_t speed)
-  : ModuleParams(nullptr) {
+  : ModuleParams(nullptr),
+    _px4_rangefinder_forward(0, distance_sensor_s::ROTATION_FORWARD_FACING),
+    _px4_rangefinder_downward(1, distance_sensor_s::ROTATION_DOWNWARD_FACING) {
   strncpy(_port, port, sizeof(_port));
   _port[sizeof(_port)-1]=0x0;
   _speed = speed;
+  _px4_rangefinder_forward.set_device_type(DRV_DIST_DEVTYPE_TR24DA100);
+  _px4_rangefinder_forward.set_rangefinder_type(distance_sensor_s::MAV_DISTANCE_SENSOR_RADAR);
+  _px4_rangefinder_forward.set_min_distance(0.15f);
+  _px4_rangefinder_forward.set_max_distance(50.0f);
+
+  _px4_rangefinder_downward.set_device_type(DRV_DIST_DEVTYPE_TR24DA100);
+  _px4_rangefinder_downward.set_rangefinder_type(distance_sensor_s::MAV_DISTANCE_SENSOR_RADAR);
+  _px4_rangefinder_downward.set_min_distance(0.15f);
+  _px4_rangefinder_downward.set_max_distance(50.0f);
+
   _timestamp_last_sample = hrt_absolute_time(); //reset time counter
   _px42teensy.reset();
   _timestamp_last_write = hrt_absolute_time();
@@ -278,7 +290,7 @@ void Flktr2L::run() {
 	  if(vehicle_command.param2 >= 0) {
 	    _px42teensy._target_speed = vehicle_command.param2;
 	    something_changed = true;
-	    PX4_INFO("speed change: %.2f", (double)_px42teensy._target_speed);
+	    PX4_INFO("speed change: %.2f/%.2f", (double)_px42teensy._target_speed, (double)_px42teensy._actual_speed);
 	  }
 	}
 	if(vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR) {
@@ -305,13 +317,13 @@ void Flktr2L::run() {
 	    _px42teensy._is_test = true;
 	    _px42teensy._aux[aux] = isnanf(vehicle_command.param1)?-1:vehicle_command.param1;
 	    something_changed = true;
-	    /*PX4_INFO("actuator test: %.2f %.2f %.2f %.2f %.2f %.2f",
+	    PX4_INFO("actuator test: %.2f %.2f %.2f %.2f %.2f %.2f",
 		     (double)_px42teensy._aux[0],
 		     (double)_px42teensy._aux[1],
 		     (double)_px42teensy._aux[2],
 		     (double)_px42teensy._aux[3],
 		     (double)_px42teensy._aux[4],
-		     (double)_px42teensy._aux[5]);*/
+		     (double)_px42teensy._aux[5]);
 	  }
 	}
       }
@@ -351,21 +363,29 @@ void Flktr2L::run() {
 	if(_teensy2px4._header[0] == sReferenceHeader[0] && _teensy2px4._header[1] == sReferenceHeader[1] && _teensy2px4._size == sizeof(_teensy2px4)) {
 	  // we found a valid frame
 	  res = true;
-	  _msg.id=0;
-	  _msg.timestamp = hrt_absolute_time();
-	  _msg.data_1 = _teensy2px4._scale;
-	  _msg.data_2 = 0;
-	  //PX4_INFO("%lu", _msg.data_1);
+	  if(_teensy2px4._mod & PckgTeensy2PX4::SCALE) {
+	    _msg_tool_status.id=0;
+	    _msg_tool_status.timestamp = hrt_absolute_time();
+	    _msg_tool_status.data_1 = _teensy2px4._scale;
+	    _msg_tool_status.data_2 = 0;
+	    _tool_status_pub.publish(_msg_tool_status);
+	  }
+	  if(_teensy2px4._mod & PckgTeensy2PX4::DOWNWARD) {
+	    _px4_rangefinder_downward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
+	  }
+	  if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
+	    _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
+	  }
+	  PX4_INFO("%lu %.2f %.2f", _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
 	}
       }
     }
 
     if(res) {
-      _tool_status_pub.publish(_msg); //last value only
       _timestamp_last_sample = hrt_absolute_time(); //remember when we read the last valid package
     }
     else {
-      //when did we read the last valid package
+      //when did we read the last valid package?
       if (hrt_elapsed_time(&_timestamp_last_sample) > 10000000) {
 	_timestamp_last_sample = hrt_absolute_time(); //reset time counter
 	//let's try to reopen the port
@@ -385,7 +405,7 @@ void Flktr2L::run() {
       //PX4_INFO("bytes written: %d", bytes_written);
     }
     
-    px4_usleep(100000);
+    px4_usleep(50000);
   }
 
   orb_unsubscribe(vehicle_status_sub);

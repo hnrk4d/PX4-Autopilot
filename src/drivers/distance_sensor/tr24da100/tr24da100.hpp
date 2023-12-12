@@ -21,13 +21,12 @@
 #include <px4_platform_common/px4_config.h>
 #include <px4_platform_common/defines.h>
 #include <px4_platform_common/px4_work_queue/ScheduledWorkItem.hpp>
-#include <lib/perf/perf_counter.h>
 
 using namespace time_literals;
 
 #define TR24DA100_MEASURE_INTERVAL      10_ms
-#define TR24DA100_MAX_DISTANCE	        30.0f
-#define TR24DA100_MIN_DISTANCE	        0.5f
+#define TR24DA100_MAX_DISTANCE	        50.0f
+#define TR24DA100_MIN_DISTANCE	        0.15f
 #define TR24DA100_VERSION	        1
 #define BUFFER_MAX_LENGTH               20
 #define PACKET_MAX_LENGTH 		10

@@ -15,6 +15,8 @@
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/tool_status.h>
+#include <lib/drivers/device/Device.hpp>
+#include <lib/drivers/rangefinder/PX4Rangefinder.hpp>
 
 using namespace time_literals;
 
@@ -65,7 +67,9 @@ private:
   uORB::Publication<vehicle_command_s> _vehicle_command_pub{ORB_ID(vehicle_command)};
   uORB::Publication<tool_status_s> _tool_status_pub{ORB_ID(tool_status)};
 
-  tool_status_s _msg = {};
+  tool_status_s _msg_tool_status = {};
+  PX4Rangefinder _px4_rangefinder_forward;
+  PX4Rangefinder _px4_rangefinder_downward;
 
   bool _failsafe = false;
 
@@ -78,14 +82,20 @@ private:
 
   //This must correspond 1:1 to the PckgTeensy2PX4 structure on the Teensy side!
   struct PckgTeensy2PX4 {
+    enum {DOWNWARD=0x01, FORWARD=0x02, SCALE=0x04};
     uint16_t _header[2];
     uint8_t _size = sizeof(Flktr2L::PckgTeensy2PX4);
+    uint32_t _mod = 0;
+    float _downward_dist = 0.0f;
+    float _forward_dist = 0.0f;
     uint32_t _scale = 0;
   } _teensy2px4;
 
   struct PckgPX42Teensy {
+    enum {TARGET_SPEED=0x0001, ACTUAL_SPEED=0x0002, AUX0=0x0004, AUX1=0x0008, AUX2=0x0010, AUX3=0x0020, AUX4=0x0040, AUX5=0x0080};
     const uint16_t _header[2] = {0xFFe5, 0xFFe3};
     const uint8_t _size = sizeof(Flktr2L::PckgPX42Teensy);
+    uint32_t _mod = 0;
     float _target_speed;
     float _actual_speed;
     bool _is_test;
