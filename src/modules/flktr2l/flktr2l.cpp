@@ -223,9 +223,7 @@ void Flktr2L::_shiftAndAdd(uint8_t oneByte) {
   pkg[sizeof(_teensy2px4)-1] = oneByte;
 }
 
-void Flktr2L::run() {
-  bool something_changed = false;
-  
+void Flktr2L::run() {  
   struct vehicle_status_s vehicle_status;
   struct vehicle_command_s vehicle_command;
   struct sensor_gps_s sensor_gps;
@@ -252,7 +250,7 @@ void Flktr2L::run() {
   while (!should_exit()) {
     // wait for up to 1000ms for data
     int pret = px4_poll(fds, (sizeof(fds) / sizeof(fds[0])), 1000);
-    
+    _px42teensy.reset();
     if (pret == 0) {
       // Timeout: let the loop run anyway, don't do `continue` here
     } else if (pret < 0) {
@@ -289,7 +287,7 @@ void Flktr2L::run() {
 	if(vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_SPEED) {
 	  if(vehicle_command.param2 >= 0) {
 	    _px42teensy._target_speed = vehicle_command.param2;
-	    something_changed = true;
+	    _px42teensy._mod |= PckgPX42Teensy::TARGET_SPEED;
 	    PX4_INFO("speed change: %.2f/%.2f", (double)_px42teensy._target_speed, (double)_px42teensy._actual_speed);
 	  }
 	}
@@ -300,8 +298,8 @@ void Flktr2L::run() {
 	  _px42teensy._aux[3] = vehicle_command.param4;
 	  _px42teensy._aux[4] = vehicle_command.param5;
 	  _px42teensy._aux[5] = vehicle_command.param6;
+	  _px42teensy._mod |= PckgPX42Teensy::AUX1 | PckgPX42Teensy::AUX2 | PckgPX42Teensy::AUX3 | PckgPX42Teensy::AUX4 | PckgPX42Teensy::AUX5 | PckgPX42Teensy::AUX6;
 	  _px42teensy._is_test = false;
-	  something_changed = true;
  	  PX4_INFO("actuators: %.2f %.2f %.2f %.2f %.2f %.2f",
 		   (double)_px42teensy._aux[0],
 		   (double)_px42teensy._aux[1],
@@ -316,7 +314,14 @@ void Flktr2L::run() {
 	    for(auto &x : _px42teensy._aux) x = -1;
 	    _px42teensy._is_test = true;
 	    _px42teensy._aux[aux] = isnanf(vehicle_command.param1)?-1:vehicle_command.param1;
-	    something_changed = true;
+	    switch(aux) {
+	    case 0: _px42teensy._mod |= PckgPX42Teensy::AUX1; break;
+	    case 1: _px42teensy._mod |= PckgPX42Teensy::AUX2; break;
+	    case 2: _px42teensy._mod |= PckgPX42Teensy::AUX3; break;
+	    case 3: _px42teensy._mod |= PckgPX42Teensy::AUX4; break;
+	    case 4: _px42teensy._mod |= PckgPX42Teensy::AUX5; break;
+	    case 5: _px42teensy._mod |= PckgPX42Teensy::AUX6; break;
+	    }
 	    PX4_INFO("actuator test: %.2f %.2f %.2f %.2f %.2f %.2f",
 		     (double)_px42teensy._aux[0],
 		     (double)_px42teensy._aux[1],
@@ -331,6 +336,7 @@ void Flktr2L::run() {
 	//gps -> actual speed
 	orb_copy(ORB_ID(sensor_gps), sensor_gps_sub, &sensor_gps);
 	_px42teensy._actual_speed = sensor_gps.vel_m_s;
+	_px42teensy._mod |= PckgPX42Teensy::ACTUAL_SPEED;
 	//PX4_INFO("gps speed: %.2f", (double)_px42teensy._actual_speed);
       }
       /*
@@ -376,6 +382,7 @@ void Flktr2L::run() {
 	  if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
 	    _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
 	  }
+	  _teensy2px4._mod = 0;
 	  PX4_INFO("%lu %.2f %.2f", _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
 	}
       }
@@ -396,9 +403,8 @@ void Flktr2L::run() {
     }
 
     //write
-    if (something_changed || (hrt_elapsed_time(&_timestamp_last_write) > 1000000)) {
+    if (_px42teensy._mod || (hrt_elapsed_time(&_timestamp_last_write) > 1000000)) {
       _timestamp_last_write = hrt_absolute_time();
-      something_changed = false;
       /*int bytes_written = */::write(_file_descriptor, &_px42teensy, sizeof(_px42teensy));
       ::tcdrain(_file_descriptor);
       ::tcflush(_file_descriptor, TCOFLUSH);

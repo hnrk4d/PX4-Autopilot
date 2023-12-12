@@ -92,7 +92,7 @@ private:
   } _teensy2px4;
 
   struct PckgPX42Teensy {
-    enum {TARGET_SPEED=0x0001, ACTUAL_SPEED=0x0002, AUX0=0x0004, AUX1=0x0008, AUX2=0x0010, AUX3=0x0020, AUX4=0x0040, AUX5=0x0080};
+    enum {TARGET_SPEED=0x0001, ACTUAL_SPEED=0x0002, AUX1=0x0004, AUX2=0x0008, AUX3=0x0010, AUX4=0x0020, AUX5=0x0040, AUX6=0x0080};
     const uint16_t _header[2] = {0xFFe5, 0xFFe3};
     const uint8_t _size = sizeof(Flktr2L::PckgPX42Teensy);
     uint32_t _mod = 0;
@@ -103,6 +103,7 @@ private:
     void reset() {
       _target_speed = 0;
       _actual_speed = 0;
+      _mod = 0;
       _is_test = false;
       for(auto &x : _aux) x = -1;
     }
