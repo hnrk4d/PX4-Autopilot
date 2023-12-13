@@ -20,19 +20,19 @@
 
 using namespace time_literals;
 
-extern "C" __EXPORT int flktr2l_main(int argc, char *argv[]);
+extern "C" __EXPORT int tooldrv_main(int argc, char *argv[]);
 
-class Flktr2L : public ModuleBase<Flktr2L>, public ModuleParams {
+class ToolDrv : public ModuleBase<ToolDrv>, public ModuleParams {
 public:
-  Flktr2L(const char *port, const speed_t speed = B57600);
+  ToolDrv(const char *port, const speed_t speed = B57600);
 
-  virtual ~Flktr2L() = default;
+  virtual ~ToolDrv() = default;
 
   /** @see ModuleBase */
   static int task_spawn(int argc, char *argv[]);
 
   /** @see ModuleBase */
-  static Flktr2L *instantiate(int argc, char *argv[]);
+  static ToolDrv *instantiate(int argc, char *argv[]);
 
   /** @see ModuleBase */
   static int custom_command(int argc, char *argv[]);
@@ -84,7 +84,8 @@ private:
   struct PckgTeensy2PX4 {
     enum {DOWNWARD=0x01, FORWARD=0x02, SCALE=0x04};
     uint16_t _header[2];
-    uint8_t _size = sizeof(Flktr2L::PckgTeensy2PX4);
+    uint16_t _crc = 0;
+    uint8_t _size = sizeof(ToolDrv::PckgTeensy2PX4);
     uint32_t _mod = 0;
     float _downward_dist = 0.0f;
     float _forward_dist = 0.0f;
@@ -92,23 +93,26 @@ private:
   } _teensy2px4;
 
   struct PckgPX42Teensy {
-    enum {TARGET_SPEED=0x0001, ACTUAL_SPEED=0x0002, AUX1=0x0004, AUX2=0x0008, AUX3=0x0010, AUX4=0x0020, AUX5=0x0040, AUX6=0x0080};
+    enum {TARGET_SPEED=0x0001, ACTUAL_SPEED=0x0002, AUX1=0x0004, AUX2=0x0008, AUX3=0x0010, AUX4=0x0020, AUX5=0x0040, AUX6=0x0080, TEST=0x0100};
     const uint16_t _header[2] = {0xFFe5, 0xFFe3};
-    const uint8_t _size = sizeof(Flktr2L::PckgPX42Teensy);
-    uint32_t _mod = 0;
+    uint16_t _crc;
+    const uint8_t _size = sizeof(ToolDrv::PckgPX42Teensy);
+    uint32_t _mod;
     float _target_speed;
     float _actual_speed;
-    bool _is_test;
+    bool _test;
     float _aux[6];
     void reset() {
       _target_speed = 0;
       _actual_speed = 0;
       _mod = 0;
-      _is_test = false;
+      _test = false;
+      _crc = 0;
       for(auto &x : _aux) x = -1;
     }
   } _px42teensy;
 
+  uint16_t crc16(char *data_p, uint16_t length);
   void _shiftAndAdd(uint8_t oneByte); //shift by one byte and add one byte
   uint8_t _buffer[sBufferSize];
   hrt_abstime _timestamp_last_sample {};

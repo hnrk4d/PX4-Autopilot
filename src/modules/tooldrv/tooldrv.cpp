@@ -4,7 +4,7 @@
  *
  ****************************************************************************/
 
-#include "flktr2l.h"
+#include "tooldrv.h"
 
 #include <math.h>
 
@@ -20,13 +20,13 @@
 
 #include <parameters/param.h>
 
-int Flktr2L::print_status() {
+int ToolDrv::print_status() {
   PX4_INFO("Running - failsafe/scale/downw/forw : %d/%lu/%.2f/%.2f", _failsafe, _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
 
   return PX4_OK;
 }
 
-int Flktr2L::custom_command(int argc, char *argv[]) {
+int ToolDrv::custom_command(int argc, char *argv[]) {
 
   if (!is_running()) {
     print_usage("not running");
@@ -43,8 +43,8 @@ int Flktr2L::custom_command(int argc, char *argv[]) {
   return print_usage("unknown command");
 }
 
-int Flktr2L::task_spawn(int argc, char *argv[]) {
-  _task_id = px4_task_spawn_cmd("flktr2l",
+int ToolDrv::task_spawn(int argc, char *argv[]) {
+  _task_id = px4_task_spawn_cmd("tooldrv",
 				SCHED_DEFAULT,
 				SCHED_PRIORITY_DEFAULT,
 				2048,
@@ -59,7 +59,7 @@ int Flktr2L::task_spawn(int argc, char *argv[]) {
   return PX4_OK;
 }
 
-Flktr2L *Flktr2L::instantiate(int argc, char *argv[]) {
+ToolDrv *ToolDrv::instantiate(int argc, char *argv[]) {
   bool error_flag = false;
 
   int myoptind = 1;
@@ -106,7 +106,7 @@ Flktr2L *Flktr2L::instantiate(int argc, char *argv[]) {
     return nullptr;
   }
 
-  Flktr2L *instance = new Flktr2L(port, speed);
+  ToolDrv *instance = new ToolDrv(port, speed);
 
   if (instance == nullptr) {
     PX4_ERR("alloc failed");
@@ -115,7 +115,7 @@ Flktr2L *Flktr2L::instantiate(int argc, char *argv[]) {
   return instance;
 }
 
-Flktr2L::Flktr2L(const char *port, const speed_t speed)
+ToolDrv::ToolDrv(const char *port, const speed_t speed)
   : ModuleParams(nullptr),
     _px4_rangefinder_forward(0, distance_sensor_s::ROTATION_FORWARD_FACING),
     _px4_rangefinder_downward(1, distance_sensor_s::ROTATION_DOWNWARD_FACING) {
@@ -137,7 +137,7 @@ Flktr2L::Flktr2L(const char *port, const speed_t speed)
   _timestamp_last_write = hrt_absolute_time();
 }
 
-int Flktr2L::open_serial_port(const char *port, const speed_t speed) {  
+int ToolDrv::open_serial_port(const char *port, const speed_t speed) {  
   // File descriptor initialized?
   if (_file_descriptor > 0) {
     PX4_DEBUG("serial port already open");
@@ -217,13 +217,13 @@ int Flktr2L::open_serial_port(const char *port, const speed_t speed) {
   return PX4_OK;
 }
 
-void Flktr2L::_shiftAndAdd(uint8_t oneByte) {
+void ToolDrv::_shiftAndAdd(uint8_t oneByte) {
   uint8_t *pkg = (uint8_t*)&_teensy2px4;
   memmove(pkg, pkg+1, sizeof(_teensy2px4)-1);
   pkg[sizeof(_teensy2px4)-1] = oneByte;
 }
 
-void Flktr2L::run() {  
+void ToolDrv::run() {  
   struct vehicle_status_s vehicle_status;
   struct vehicle_command_s vehicle_command;
   struct sensor_gps_s sensor_gps;
@@ -299,7 +299,7 @@ void Flktr2L::run() {
 	  _px42teensy._aux[4] = vehicle_command.param5;
 	  _px42teensy._aux[5] = vehicle_command.param6;
 	  _px42teensy._mod |= PckgPX42Teensy::AUX1 | PckgPX42Teensy::AUX2 | PckgPX42Teensy::AUX3 | PckgPX42Teensy::AUX4 | PckgPX42Teensy::AUX5 | PckgPX42Teensy::AUX6;
-	  _px42teensy._is_test = false;
+	  _px42teensy._test = false;
  	  PX4_INFO("actuators: %.2f %.2f %.2f %.2f %.2f %.2f",
 		   (double)_px42teensy._aux[0],
 		   (double)_px42teensy._aux[1],
@@ -312,8 +312,8 @@ void Flktr2L::run() {
 	  int aux = ::round(vehicle_command.param5 - 1301.0); //see actuator functions in https://docs.px4.io/main/en/advanced_config/parameter_reference.html
 	  if(aux >= 0 && aux < 6) {
 	    for(auto &x : _px42teensy._aux) x = -1;
-	    _px42teensy._is_test = true;
 	    _px42teensy._aux[aux] = isnanf(vehicle_command.param1)?-1:vehicle_command.param1;
+	    _px42teensy._test = true;
 	    switch(aux) {
 	    case 0: _px42teensy._mod |= PckgPX42Teensy::AUX1; break;
 	    case 1: _px42teensy._mod |= PckgPX42Teensy::AUX2; break;
@@ -322,6 +322,7 @@ void Flktr2L::run() {
 	    case 4: _px42teensy._mod |= PckgPX42Teensy::AUX5; break;
 	    case 5: _px42teensy._mod |= PckgPX42Teensy::AUX6; break;
 	    }
+	    _px42teensy._mod |= PckgPX42Teensy::TEST;
 	    PX4_INFO("actuator test: %.2f %.2f %.2f %.2f %.2f %.2f",
 		     (double)_px42teensy._aux[0],
 		     (double)_px42teensy._aux[1],
@@ -367,23 +368,26 @@ void Flktr2L::run() {
       for(int i=0; i<bytes_read; i++) {
 	_shiftAndAdd(_buffer[i]);
 	if(_teensy2px4._header[0] == sReferenceHeader[0] && _teensy2px4._header[1] == sReferenceHeader[1] && _teensy2px4._size == sizeof(_teensy2px4)) {
-	  // we found a valid frame
-	  res = true;
-	  if(_teensy2px4._mod & PckgTeensy2PX4::SCALE) {
-	    _msg_tool_status.id=0;
-	    _msg_tool_status.timestamp = hrt_absolute_time();
-	    _msg_tool_status.data_1 = _teensy2px4._scale;
-	    _msg_tool_status.data_2 = 0;
-	    _tool_status_pub.publish(_msg_tool_status);
+	  uint16_t crc = crc16((char*)&_teensy2px4._size, sizeof(_teensy2px4)-3*sizeof(uint16_t));
+          if(crc == _teensy2px4._crc) {
+	    // we found a valid frame
+	    res = true;
+	    if(_teensy2px4._mod & PckgTeensy2PX4::SCALE) {
+	      _msg_tool_status.id=0;
+	      _msg_tool_status.timestamp = hrt_absolute_time();
+	      _msg_tool_status.data_1 = _teensy2px4._scale;
+	      _msg_tool_status.data_2 = 0;
+	      _tool_status_pub.publish(_msg_tool_status);
+	    }
+	    if(_teensy2px4._mod & PckgTeensy2PX4::DOWNWARD) {
+	      _px4_rangefinder_downward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
+	    }
+	    if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
+	      _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
+	    }
+	    _teensy2px4._mod = 0;
+	    PX4_INFO("teensy2px4: %lu %.2f %.2f", _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
 	  }
-	  if(_teensy2px4._mod & PckgTeensy2PX4::DOWNWARD) {
-	    _px4_rangefinder_downward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
-	  }
-	  if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
-	    _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
-	  }
-	  _teensy2px4._mod = 0;
-	  PX4_INFO("%lu %.2f %.2f", _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
 	}
       }
     }
@@ -403,12 +407,21 @@ void Flktr2L::run() {
     }
 
     //write
-    if (_px42teensy._mod || (hrt_elapsed_time(&_timestamp_last_write) > 1000000)) {
+    if (_px42teensy._mod || (hrt_elapsed_time(&_timestamp_last_write) > 5000000)) {
+      _px42teensy._crc = crc16((char*)&_px42teensy._size, sizeof(_px42teensy)-3*sizeof(uint16_t));
       _timestamp_last_write = hrt_absolute_time();
-      /*int bytes_written = */::write(_file_descriptor, &_px42teensy, sizeof(_px42teensy));
+      //int bytes_written =
+	::write(_file_descriptor, &_px42teensy, sizeof(_px42teensy));
       ::tcdrain(_file_descriptor);
-      ::tcflush(_file_descriptor, TCOFLUSH);
-      //PX4_INFO("bytes written: %d", bytes_written);
+      //::tcflush(_file_descriptor, TCOFLUSH);
+      /*PX4_INFO("bytes written: %d: %.2f %.2f %.2f %.2f %.2f %.2f",
+	       bytes_written,
+	       (double)_px42teensy._aux[0],
+	       (double)_px42teensy._aux[1],
+	       (double)_px42teensy._aux[2],
+	       (double)_px42teensy._aux[3],
+	       (double)_px42teensy._aux[4],
+	       (double)_px42teensy._aux[5]);*/
     }
     
     px4_usleep(50000);
@@ -421,8 +434,31 @@ void Flktr2L::run() {
   close(_file_descriptor);
 }
 
+uint16_t ToolDrv::crc16(char *data_p, uint16_t length) {
+  unsigned int POLY = 0x8408;
+  unsigned char i;
+  unsigned int data;
+  unsigned int crc = 0xffff;
+
+  if (length == 0)
+    return (~crc);
+
+  do {
+    for (i=0, data=(unsigned int)0xff & *data_p++; i < 8; i++, data >>= 1) {
+      if ((crc & 0x0001) ^ (data & 0x0001))
+	crc = (crc >> 1) ^ POLY;
+      else  crc >>= 1;
+    }
+  } while (--length);
+  crc = ~crc;
+  data = crc;
+  crc = (crc << 8) | ((data >> 8) & 0xff);
+
+  return (crc);
+}
+
 /*
-void Flktr2L::adc() {
+void ToolDrv::adc() {
   PX4_INFO("ADC: %ld %ld",
 	_msg.data_1,
 	_msg.data_2
@@ -430,7 +466,7 @@ void Flktr2L::adc() {
 }
 */
 
-void Flktr2L::parameters_update(bool force) {
+void ToolDrv::parameters_update(bool force) {
   // check for parameter updates
   if (_parameter_update_sub.updated() || force) {
     // clear update
@@ -442,25 +478,25 @@ void Flktr2L::parameters_update(bool force) {
   }
 }
 
-int Flktr2L::print_usage(const char *reason) {
+int ToolDrv::print_usage(const char *reason) {
   if (reason) {
     PX4_WARN("%s\n", reason);
   }
   
   PRINT_MODULE_DESCRIPTION(R"DESCR_STR(
 ### Description
-The module flktr2l supports start/stop/status functionality and runs in the background.
+The module tooldrv supports start/stop/status functionality and runs in the background.
 
 ### Implementation
-The module flktr2l is listening to the vehicle and tool status. If a failsafe status is triggered, the actuators will be turned off. Depending on the tool it collects tool depending information.
+The module tooldrv is listening to the vehicle and tool status. If a failsafe status is triggered, the actuators will be turned off. Depending on the tool it collects tool depending information.
 
 ### Examples
 CLI usage example:
-$ flktr2l start
+$ tooldrv start
 
 )DESCR_STR");
 
-  PRINT_MODULE_USAGE_NAME("flktr2l", "system");
+  PRINT_MODULE_USAGE_NAME("tooldrv", "system");
   PRINT_MODULE_USAGE_COMMAND_DESCR("start", "Start module");
   PRINT_MODULE_USAGE_PARAM_STRING('d', "/dev/ttyS1", "/dev/ttyS[0-9]", "Serial device", false);
   PRINT_MODULE_USAGE_PARAM_STRING('b', "57600", "9600, 19200, 38400, 57600, 115200, 230400", "Baud rate", false);
@@ -470,6 +506,6 @@ $ flktr2l start
   return PX4_OK;
 }
 
-int flktr2l_main(int argc, char *argv[]) {
-  return Flktr2L::main(argc, argv);
+int tooldrv_main(int argc, char *argv[]) {
+  return ToolDrv::main(argc, argv);
 }
