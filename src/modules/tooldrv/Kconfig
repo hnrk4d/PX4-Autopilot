@@ -1,0 +1,13 @@
+menuconfig MODULES_TOOLDRV
+	bool "tooldrv"
+	default n
+	---help---
+		Enable support for Fluktor drones
+
+menuconfig USER_TOOLDRV
+	bool "tooldrv running as userspace module"
+	default n
+	depends on MODULES_TOOLDRV
+	---help---
+		Put tooldrv in userspace memory
+
