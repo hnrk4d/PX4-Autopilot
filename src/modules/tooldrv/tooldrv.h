@@ -24,7 +24,7 @@ extern "C" __EXPORT int tooldrv_main(int argc, char *argv[]);
 
 class ToolDrv : public ModuleBase<ToolDrv>, public ModuleParams {
 public:
-  ToolDrv(const char *port, const speed_t speed = B57600);
+  ToolDrv(const char *port, const speed_t speed = B115200);
 
   virtual ~ToolDrv() = default;
 
