@@ -66,7 +66,7 @@ ToolDrv *ToolDrv::instantiate(int argc, char *argv[]) {
   int ch;
   const char *myoptarg = nullptr;
   char port[20] = "/dev/ttyS1";
-  speed_t speed = B57600;
+  speed_t speed = B115200;
 
   // parse CLI arguments
   while ((ch = px4_getopt(argc, argv, "d:b:", &myoptind, &myoptarg)) != EOF) {
@@ -499,7 +499,7 @@ $ tooldrv start
   PRINT_MODULE_USAGE_NAME("tooldrv", "system");
   PRINT_MODULE_USAGE_COMMAND_DESCR("start", "Start module");
   PRINT_MODULE_USAGE_PARAM_STRING('d', "/dev/ttyS1", "/dev/ttyS[0-9]", "Serial device", false);
-  PRINT_MODULE_USAGE_PARAM_STRING('b', "57600", "9600, 19200, 38400, 57600, 115200, 230400", "Baud rate", false);
+  PRINT_MODULE_USAGE_PARAM_STRING('b', "115200", "9600, 19200, 38400, 57600, 115200, 230400", "Baud rate", false);
 
   PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
