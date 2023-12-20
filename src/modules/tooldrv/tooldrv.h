@@ -13,7 +13,6 @@
 #include <uORB/Publication.hpp>
 #include <uORB/SubscriptionInterval.hpp>
 #include <uORB/topics/parameter_update.h>
-#include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/tool_status.h>
 #include <lib/drivers/device/Device.hpp>
 #include <lib/drivers/rangefinder/PX4Rangefinder.hpp>
@@ -64,14 +63,11 @@ private:
 
   // Subscriptions
   uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
-  uORB::Publication<vehicle_command_s> _vehicle_command_pub{ORB_ID(vehicle_command)};
   uORB::Publication<tool_status_s> _tool_status_pub{ORB_ID(tool_status)};
 
   tool_status_s _msg_tool_status = {};
   PX4Rangefinder _px4_rangefinder_forward;
   PX4Rangefinder _px4_rangefinder_downward;
-
-  bool _failsafe = false;
 
   char _port[20] {};
   speed_t _speed {};
@@ -93,19 +89,25 @@ private:
   } _teensy2px4;
 
   struct PckgPX42Teensy {
-    enum {TARGET_SPEED=0x0001, ACTUAL_SPEED=0x0002, AUX1=0x0004, AUX2=0x0008, AUX3=0x0010, AUX4=0x0020, AUX5=0x0040, AUX6=0x0080, TEST=0x0100};
+    enum {TARGET_SPEED=0x0001, ACTUAL_SPEED=0x0002, AUX1=0x0004, AUX2=0x0008, AUX3=0x0010, AUX4=0x0020, AUX5=0x0040, AUX6=0x0080, TEST=0x0100, STATUS=0x0200};
     const uint16_t _header[2] = {0xFFe5, 0xFFe3};
     uint16_t _crc;
     const uint8_t _size = sizeof(ToolDrv::PckgPX42Teensy);
     uint32_t _mod;
     float _target_speed;
     float _actual_speed;
+    bool _failsafe;
+    uint8_t  _nav_state;
+    uint8_t _arming_state;
     bool _test;
     float _aux[6];
     void reset() {
       _target_speed = 0;
       _actual_speed = 0;
       _mod = 0;
+      _failsafe = false;
+      _nav_state = 0;
+      _arming_state = 1;
       _test = false;
       _crc = 0;
       for(auto &x : _aux) x = -1;

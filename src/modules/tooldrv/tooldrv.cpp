@@ -21,7 +21,7 @@
 #include <parameters/param.h>
 
 int ToolDrv::print_status() {
-  PX4_INFO("Running - failsafe/scale/downw/forw : %d/%lu/%.2f/%.2f", _failsafe, _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
+  PX4_INFO("Running - failsafe/scale/downw/forw : %d/%lu/%.2f/%.2f", _px42teensy._failsafe, _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
 
   return PX4_OK;
 }
@@ -260,26 +260,12 @@ void ToolDrv::run() {
       continue;
     } else {
       if (fds[0].revents & POLLIN) {
-	//vehicle status
+	//vehicle status changed
 	orb_copy(ORB_ID(vehicle_status), vehicle_status_sub, &vehicle_status);
-	
-	if(vehicle_status.failsafe != _failsafe) {
-	  //failsafe status changed
-	  _failsafe = vehicle_status.failsafe;
-	  PX4_INFO("failsafe status changed to %d", _failsafe);
-	  if(_failsafe) {
-	    vehicle_command_s vcmd = {}; // all 0 is fine
-	    vcmd.command = vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR;
-	    vcmd.param1=-1; //all off
-	    vcmd.param2=-1;
-	    vcmd.param3=-1;
-	    vcmd.param4=-1;
-	    vcmd.param5=-1;
-	    vcmd.param6=-1;
-	    vcmd.timestamp = hrt_absolute_time();
-	    _vehicle_command_pub.publish(vcmd);
-	  }
-	}
+	_px42teensy._arming_state = vehicle_status.arming_state;
+	_px42teensy._nav_state = vehicle_status.nav_state;
+	_px42teensy._failsafe = vehicle_status.failsafe;
+	_px42teensy._mod |= PckgPX42Teensy::STATUS;
       }
       if (fds[1].revents & POLLIN) {
 	//vehicle command -> target speed
