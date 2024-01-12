@@ -369,7 +369,7 @@ void ToolDrv::run() {
 	      _px4_rangefinder_downward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
 	    }
 	    if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
-	      _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
+	      _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._forward_dist);	    
 	    }
 	    _teensy2px4._mod = 0;
 	    PX4_INFO("teensy2px4: %lu %.2f %.2f", _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
