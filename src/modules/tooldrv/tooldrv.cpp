@@ -134,6 +134,7 @@ ToolDrv::ToolDrv(const char *port, const speed_t speed)
   _timestamp_last_sample = hrt_absolute_time(); //reset time counter
   _px42teensy.reset();
   _timestamp_last_write = hrt_absolute_time();
+  _timestamp_last_speed = hrt_absolute_time();
 }
 
 int ToolDrv::open_serial_port(const char *port, const speed_t speed) {  
@@ -279,7 +280,7 @@ void ToolDrv::run() {
 	  if(vehicle_command.param2 >= 0) {
 	    _px42teensy._target_speed = vehicle_command.param2;
 	    _px42teensy._mod |= PckgPX42Teensy::TARGET_SPEED;
-	    PX4_INFO("speed change: %.2f/%.2f", (double)_px42teensy._target_speed, (double)_px42teensy._actual_speed);
+	    PX4_INFO("speed change: %.2f", (double)_px42teensy._target_speed);
 	  }
 	}
 	if(vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR) {
@@ -329,7 +330,10 @@ void ToolDrv::run() {
 	orb_copy(ORB_ID(sensor_gps), sensor_gps_sub, &sensor_gps);
 	_px42teensy._actual_speed = sensor_gps.vel_m_s;
 	_px42teensy._mod |= PckgPX42Teensy::ACTUAL_SPEED;
-	//PX4_INFO("gps speed: %.2f", (double)_px42teensy._actual_speed);
+	if(hrt_elapsed_time(&_timestamp_last_speed) > 10000000) {
+	  _timestamp_last_speed = hrt_absolute_time();
+	  PX4_INFO("gps speed: %.2f", (double)_px42teensy._actual_speed);
+	}
       }
       /*
       if (fds[1].revents & POLLIN) {
