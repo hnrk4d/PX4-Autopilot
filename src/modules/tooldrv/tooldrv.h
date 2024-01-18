@@ -119,4 +119,5 @@ private:
   uint8_t _buffer[sBufferSize];
   hrt_abstime _timestamp_last_sample {};
   hrt_abstime _timestamp_last_write {};
+  hrt_abstime _timestamp_last_speed {};
 };
