@@ -21,8 +21,7 @@
 #include <parameters/param.h>
 
 int ToolDrv::print_status() {
-  PX4_INFO("Running - failsafe/scale/downw/forw : %d/%lu/%.2f/%.2f", _px42teensy._failsafe, _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
-
+  PX4_INFO("Running");
   return PX4_OK;
 }
 
@@ -135,6 +134,7 @@ ToolDrv::ToolDrv(const char *port, const speed_t speed)
   _timestamp_last_sample = hrt_absolute_time(); //reset time counter
   _px42teensy.reset();
   _timestamp_last_write = hrt_absolute_time();
+  _timestamp_last_speed = hrt_absolute_time();
 }
 
 int ToolDrv::open_serial_port(const char *port, const speed_t speed) {  
@@ -224,7 +224,7 @@ void ToolDrv::_shiftAndAdd(uint8_t oneByte) {
 }
 
 void ToolDrv::run() {  
-  struct vehicle_status_s vehicle_status;
+  struct vehicle_status_s vehicle_status, vehicle_status_dup;
   struct vehicle_command_s vehicle_command;
   struct sensor_gps_s sensor_gps;
   //struct adc_report_s adc_report;
@@ -262,10 +262,16 @@ void ToolDrv::run() {
       if (fds[0].revents & POLLIN) {
 	//vehicle status changed
 	orb_copy(ORB_ID(vehicle_status), vehicle_status_sub, &vehicle_status);
-	_px42teensy._arming_state = vehicle_status.arming_state;
-	_px42teensy._nav_state = vehicle_status.nav_state;
-	_px42teensy._failsafe = vehicle_status.failsafe;
-	_px42teensy._mod |= PckgPX42Teensy::STATUS;
+	if(vehicle_status_dup.arming_state != vehicle_status.arming_state ||
+	   vehicle_status_dup.nav_state != vehicle_status.nav_state ||
+	   vehicle_status_dup.failsafe != vehicle_status.failsafe) {
+	  orb_copy(ORB_ID(vehicle_status), vehicle_status_sub, &vehicle_status_dup);
+	  _px42teensy._mod |= PckgPX42Teensy::STATUS;
+	  _px42teensy._arming_state = vehicle_status.arming_state;
+	  _px42teensy._nav_state = vehicle_status.nav_state;
+	  _px42teensy._failsafe = vehicle_status.failsafe;
+	  PX4_INFO("status change: %d/%d/%d", _px42teensy._arming_state, _px42teensy._nav_state, _px42teensy._failsafe);
+	}
       }
       if (fds[1].revents & POLLIN) {
 	//vehicle command -> target speed
@@ -274,7 +280,7 @@ void ToolDrv::run() {
 	  if(vehicle_command.param2 >= 0) {
 	    _px42teensy._target_speed = vehicle_command.param2;
 	    _px42teensy._mod |= PckgPX42Teensy::TARGET_SPEED;
-	    PX4_INFO("speed change: %.2f/%.2f", (double)_px42teensy._target_speed, (double)_px42teensy._actual_speed);
+	    PX4_INFO("speed change: %.2f", (double)_px42teensy._target_speed);
 	  }
 	}
 	if(vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR) {
@@ -324,7 +330,10 @@ void ToolDrv::run() {
 	orb_copy(ORB_ID(sensor_gps), sensor_gps_sub, &sensor_gps);
 	_px42teensy._actual_speed = sensor_gps.vel_m_s;
 	_px42teensy._mod |= PckgPX42Teensy::ACTUAL_SPEED;
-	//PX4_INFO("gps speed: %.2f", (double)_px42teensy._actual_speed);
+	if(hrt_elapsed_time(&_timestamp_last_speed) > 10000000) {
+	  _timestamp_last_speed = hrt_absolute_time();
+	  PX4_INFO("gps speed: %.2f", (double)_px42teensy._actual_speed);
+	}
       }
       /*
       if (fds[1].revents & POLLIN) {
@@ -369,10 +378,10 @@ void ToolDrv::run() {
 	      _px4_rangefinder_downward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
 	    }
 	    if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
-	      _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
+	      _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._forward_dist);	    
 	    }
 	    _teensy2px4._mod = 0;
-	    PX4_INFO("teensy2px4: %lu %.2f %.2f", _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
+	    //PX4_INFO("teensy2px4: %lu %.2f %.2f", _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
 	  }
 	}
       }
@@ -392,7 +401,7 @@ void ToolDrv::run() {
       }
     }
 
-    px4_usleep(50000);
+    px4_usleep(10000); //avoid timeing issues on UART between read and write
 
     //write
     if (_px42teensy._mod || (hrt_elapsed_time(&_timestamp_last_write) > 5000000)) {

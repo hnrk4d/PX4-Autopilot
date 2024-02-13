@@ -110,3 +110,4 @@ src/systemcmds/topic_listener/listener_generated.cpp
 log/
 src/modules/mavlink/mavlink
 boards/cubepilot/cubeorange/default.px4board
+boards/cubepilot/cubeorangeplus/default.px4board
