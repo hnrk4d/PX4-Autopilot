@@ -401,7 +401,7 @@ void ToolDrv::run() {
       }
     }
 
-    px4_usleep(50000);
+    px4_usleep(10000); //avoid timeing issues on UART between read and write
 
     //write
     if (_px42teensy._mod || (hrt_elapsed_time(&_timestamp_last_write) > 5000000)) {
