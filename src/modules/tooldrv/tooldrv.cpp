@@ -392,13 +392,15 @@ void ToolDrv::run() {
       }
     }
 
+    px4_usleep(50000);
+
     //write
     if (_px42teensy._mod || (hrt_elapsed_time(&_timestamp_last_write) > 5000000)) {
       _px42teensy._crc = crc16((char*)&_px42teensy._size, sizeof(_px42teensy)-3*sizeof(uint16_t));
       _timestamp_last_write = hrt_absolute_time();
       //int bytes_written =
-	::write(_file_descriptor, &_px42teensy, sizeof(_px42teensy));
-      ::tcdrain(_file_descriptor);
+        ::write(_file_descriptor, &_px42teensy, sizeof(_px42teensy));
+      //::tcdrain(_file_descriptor);
       //::tcflush(_file_descriptor, TCOFLUSH);
       /*PX4_INFO("bytes written: %d: %.2f %.2f %.2f %.2f %.2f %.2f",
 	       bytes_written,
@@ -408,9 +410,9 @@ void ToolDrv::run() {
 	       (double)_px42teensy._aux[3],
 	       (double)_px42teensy._aux[4],
 	       (double)_px42teensy._aux[5]);*/
-    }
-    
-    px4_usleep(50000);
+    }    
+
+    px4_usleep(20000);
   }
 
   orb_unsubscribe(vehicle_status_sub);
