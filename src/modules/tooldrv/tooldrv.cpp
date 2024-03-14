@@ -15,7 +15,7 @@
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/vehicle_command.h>
-#include <uORB/topics/sensor_gps.h>
+#include <uORB/topics/vehicle_local_position.h>
 //#include <uORB/topics/adc_report.h>
 
 #include <parameters/param.h>
@@ -226,19 +226,20 @@ void ToolDrv::_shiftAndAdd(uint8_t oneByte) {
 void ToolDrv::run() {  
   struct vehicle_status_s vehicle_status, vehicle_status_dup;
   struct vehicle_command_s vehicle_command;
-  struct sensor_gps_s sensor_gps;
+  struct vehicle_local_position_s vehicle_local_position;
   //struct adc_report_s adc_report;
 
   int vehicle_status_sub = orb_subscribe(ORB_ID(vehicle_status));
   int vehicle_command_sub = orb_subscribe(ORB_ID(vehicle_command));
-  int sensor_gps_sub = orb_subscribe(ORB_ID(sensor_gps));
+  int vehicle_local_position_sub = orb_subscribe(ORB_ID(vehicle_local_position));
   //int adc_report_sub = orb_subscribe(ORB_ID(adc_report));
 
+  orb_set_interval(vehicle_local_position_sub, 250);
   px4_pollfd_struct_t fds[] =
     {
       {.fd = vehicle_status_sub, .events = POLLIN},
       {.fd = vehicle_command_sub, .events = POLLIN},
-      {.fd = sensor_gps_sub, .events = POLLIN}
+      {.fd = vehicle_local_position_sub, .events = POLLIN}
       //{.fd = adc_report_sub, .events = POLLIN}
     };
 
@@ -248,8 +249,8 @@ void ToolDrv::run() {
   //hrt_abstime _timestamp_last_adc_report = hrt_absolute_time();
   
   while (!should_exit()) {
-    // wait for up to 1000ms for data
-    int pret = px4_poll(fds, (sizeof(fds) / sizeof(fds[0])), 1000);
+    // wait for up to 100 ms for data
+    int pret = px4_poll(fds, (sizeof(fds) / sizeof(fds[0])), 100);
     _px42teensy.reset();
     if (pret == 0) {
       // Timeout: let the loop run anyway, don't do `continue` here
@@ -280,7 +281,7 @@ void ToolDrv::run() {
 	  if(vehicle_command.param2 >= 0) {
 	    _px42teensy._target_speed = vehicle_command.param2;
 	    _px42teensy._mod |= PckgPX42Teensy::TARGET_SPEED;
-	    PX4_INFO("speed change: %.2f", (double)_px42teensy._target_speed);
+	    PX4_INFO("mission speed change: %.2f", (double)_px42teensy._target_speed);
 	  }
 	}
 	if(vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR) {
@@ -326,14 +327,14 @@ void ToolDrv::run() {
 	}
       }
       if (fds[2].revents & POLLIN) {
-	//gps -> actual speed
-	orb_copy(ORB_ID(sensor_gps), sensor_gps_sub, &sensor_gps);
-	_px42teensy._actual_speed = sensor_gps.vel_m_s;
+	//actual speed
+	orb_copy(ORB_ID(vehicle_local_position), vehicle_local_position_sub, &vehicle_local_position);
+	_px42teensy._actual_speed = sqrt(vehicle_local_position.vx*vehicle_local_position.vx + vehicle_local_position.vy*vehicle_local_position.vy);
 	_px42teensy._mod |= PckgPX42Teensy::ACTUAL_SPEED;
-	if(hrt_elapsed_time(&_timestamp_last_speed) > 10000000) {
-	  _timestamp_last_speed = hrt_absolute_time();
-	  PX4_INFO("gps speed: %.2f", (double)_px42teensy._actual_speed);
-	}
+	// if(hrt_elapsed_time(&_timestamp_last_speed) > 10000000) {
+	//   _timestamp_last_speed = hrt_absolute_time();
+	//   PX4_INFO("vehicle speed: %.2f %.2f", (double)vehicle_local_position.vx, (double)vehicle_local_position.vy);
+	// }
       }
       /*
       if (fds[1].revents & POLLIN) {
@@ -426,7 +427,7 @@ void ToolDrv::run() {
 
   orb_unsubscribe(vehicle_status_sub);
   orb_unsubscribe(vehicle_command_sub);
-  orb_unsubscribe(sensor_gps_sub);
+  orb_unsubscribe(vehicle_local_position_sub);
   //orb_unsubscribe(adc_report_sub);
   close(_file_descriptor);
 }
