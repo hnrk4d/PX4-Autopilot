@@ -180,9 +180,15 @@ private:
 				msg.battery_remaining = -1;
 			}
 
-			msg.tool_id    = tool_status.id;
-			msg.tool_data1 = tool_status.data_1;
-			msg.tool_data2 = tool_status.data_2;
+			msg.tool_id     = tool_status.id;
+			msg.tool_weight = tool_status.weight;
+			msg.tool_data   = tool_status.data;
+			msg.tool_pwm0   = tool_status.pwm_0;
+			msg.tool_pwm1   = tool_status.pwm_1;
+			msg.tool_pwm2   = tool_status.pwm_2;
+			msg.tool_pwm3   = tool_status.pwm_3;
+			msg.tool_pwm4   = tool_status.pwm_4;
+			msg.tool_pwm5   = tool_status.pwm_5;
 
 			mavlink_msg_sys_status_send_struct(_mavlink->get_channel(), &msg);
 			return true;

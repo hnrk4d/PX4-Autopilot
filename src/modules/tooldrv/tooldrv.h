@@ -14,6 +14,7 @@
 #include <uORB/SubscriptionInterval.hpp>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/tool_status.h>
+#include <uORB/topics/vehicle_command.h>
 #include <lib/drivers/device/Device.hpp>
 #include <lib/drivers/rangefinder/PX4Rangefinder.hpp>
 
@@ -64,7 +65,7 @@ private:
   // Subscriptions
   uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
   uORB::Publication<tool_status_s> _tool_status_pub{ORB_ID(tool_status)};
-
+  uORB::Publication<vehicle_command_s> _vehicle_command_pub{ORB_ID(vehicle_command)};
   tool_status_s _msg_tool_status = {};
   PX4Rangefinder _px4_rangefinder_forward;
   PX4Rangefinder _px4_rangefinder_downward;
@@ -78,7 +79,7 @@ private:
 
   //This must correspond 1:1 to the PckgTeensy2PX4 structure on the Teensy side!
   struct PckgTeensy2PX4 {
-    enum {DOWNWARD=0x01, FORWARD=0x02, SCALE=0x04};
+    enum {DOWNWARD=0x01, FORWARD=0x02, SCALE=0x04, PWM=0x08};
     uint16_t _header[2];
     uint16_t _crc = 0;
     uint8_t _size = sizeof(ToolDrv::PckgTeensy2PX4);
@@ -86,6 +87,7 @@ private:
     float _downward_dist = 0.0f;
     float _forward_dist = 0.0f;
     uint32_t _scale = 0;
+    uint8_t _pwm[6];
   } _teensy2px4;
 
   struct PckgPX42Teensy {
