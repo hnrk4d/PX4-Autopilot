@@ -14,7 +14,6 @@
 
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/vehicle_status.h>
-#include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vehicle_local_position.h>
 //#include <uORB/topics/adc_report.h>
 
@@ -266,6 +265,21 @@ void ToolDrv::run() {
 	if(vehicle_status_dup.arming_state != vehicle_status.arming_state ||
 	   vehicle_status_dup.nav_state != vehicle_status.nav_state ||
 	   vehicle_status_dup.failsafe != vehicle_status.failsafe) {
+	  //if we change to disarmed, we turn off the actuators
+	  if(vehicle_status_dup.arming_state != vehicle_status.arming_state &&
+	     vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_DISARMED
+	     ) {
+	    vehicle_command_s vcmd = {}; // init to 0
+	    vcmd.command = vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR;
+	    vcmd.param1=-1; //all off
+	    vcmd.param2=-1;
+	    vcmd.param3=-1;
+	    vcmd.param4=-1;
+	    vcmd.param5=-1;
+	    vcmd.param6=-1;
+	    vcmd.timestamp = hrt_absolute_time();
+	    _vehicle_command_pub.publish(vcmd);
+	  }
 	  orb_copy(ORB_ID(vehicle_status), vehicle_status_sub, &vehicle_status_dup);
 	  _px42teensy._mod |= PckgPX42Teensy::STATUS;
 	  _px42teensy._arming_state = vehicle_status.arming_state;
@@ -328,13 +342,13 @@ void ToolDrv::run() {
       }
       if (fds[2].revents & POLLIN) {
 	//actual speed
-	orb_copy(ORB_ID(vehicle_local_position), vehicle_local_position_sub, &vehicle_local_position);
-	_px42teensy._actual_speed = sqrt(vehicle_local_position.vx*vehicle_local_position.vx + vehicle_local_position.vy*vehicle_local_position.vy);
-	_px42teensy._mod |= PckgPX42Teensy::ACTUAL_SPEED;
-	// if(hrt_elapsed_time(&_timestamp_last_speed) > 10000000) {
-	//   _timestamp_last_speed = hrt_absolute_time();
-	//   PX4_INFO("vehicle speed: %.2f %.2f", (double)vehicle_local_position.vx, (double)vehicle_local_position.vy);
-	// }
+	if(hrt_elapsed_time(&_timestamp_last_speed) > 300000) {
+	  orb_copy(ORB_ID(vehicle_local_position), vehicle_local_position_sub, &vehicle_local_position);
+	  _px42teensy._actual_speed = sqrt(vehicle_local_position.vx*vehicle_local_position.vx + vehicle_local_position.vy*vehicle_local_position.vy);
+	  _px42teensy._mod |= PckgPX42Teensy::ACTUAL_SPEED;
+	   _timestamp_last_speed = hrt_absolute_time();
+	   //PX4_INFO("vehicle speed: %.2f %.2f", (double)vehicle_local_position.vx, (double)vehicle_local_position.vy);
+	}
       }
       /*
       if (fds[1].revents & POLLIN) {
@@ -368,11 +382,22 @@ void ToolDrv::run() {
           if(crc == _teensy2px4._crc) {
 	    // we found a valid frame
 	    res = true;
-	    if(_teensy2px4._mod & PckgTeensy2PX4::SCALE) {
-	      _msg_tool_status.id=0;
-	      _msg_tool_status.timestamp = hrt_absolute_time();
-	      _msg_tool_status.data_1 = _teensy2px4._scale;
-	      _msg_tool_status.data_2 = 0;
+	    if(_teensy2px4._mod & PckgTeensy2PX4::SCALE || _teensy2px4._mod & PckgTeensy2PX4::PWM) {
+	      if(_teensy2px4._mod & PckgTeensy2PX4::SCALE) {
+		_msg_tool_status.id |= 0x01;
+		_msg_tool_status.timestamp = hrt_absolute_time();
+		_msg_tool_status.weight = _teensy2px4._scale;
+		_msg_tool_status.data   = 0;
+	      }
+	      if(_teensy2px4._mod & PckgTeensy2PX4::PWM) {
+		_msg_tool_status.id |= 0x02;
+		_msg_tool_status.pwm_0 = _teensy2px4._pwm[0];
+		_msg_tool_status.pwm_1 = _teensy2px4._pwm[1];
+		_msg_tool_status.pwm_2 = _teensy2px4._pwm[2];
+		_msg_tool_status.pwm_3 = _teensy2px4._pwm[3];
+		_msg_tool_status.pwm_4 = _teensy2px4._pwm[4];
+		_msg_tool_status.pwm_5 = _teensy2px4._pwm[5];
+	      }
 	      _tool_status_pub.publish(_msg_tool_status);
 	    }
 	    if(_teensy2px4._mod & PckgTeensy2PX4::DOWNWARD) {
@@ -381,8 +406,14 @@ void ToolDrv::run() {
 	    if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
 	      _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._forward_dist);	    
 	    }
+	    /*
+	    PX4_INFO("teensy2px4: %d - %lu %.2f %.2f [%d %d %d %d %d %d]", (int)_teensy2px4._mod,
+		     _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist,
+		     _teensy2px4._pwm[0], _teensy2px4._pwm[1], _teensy2px4._pwm[2],
+		     _teensy2px4._pwm[3], _teensy2px4._pwm[4], _teensy2px4._pwm[5]
+		     );
+	    */
 	    _teensy2px4._mod = 0;
-	    //PX4_INFO("teensy2px4: %lu %.2f %.2f", _teensy2px4._scale, (double)_teensy2px4._downward_dist, (double)_teensy2px4._forward_dist);
 	  }
 	}
       }
