@@ -77,6 +77,15 @@ private:
   const uint16_t sReferenceHeader[2] = {0xFFe5, 0xFFe3};
   static const int sBufferSize = 40;
 
+  float _cruise_speed = 0;
+  float _cruise_speed_default = 0;
+  bool _failsafe = false;
+  uint8_t  _nav_state = -1;
+  uint8_t _arming_state = 0;
+  float _mission_aux[6] {}; //last aux setting in a mission state
+  float _cache_aux[6] {};
+  bool _paused = false;
+
   //This must correspond 1:1 to the PckgTeensy2PX4 structure on the Teensy side!
   struct PckgTeensy2PX4 {
     enum {DOWNWARD=0x01, FORWARD=0x02, SCALE=0x04, PWM=0x08};
@@ -122,4 +131,5 @@ private:
   hrt_abstime _timestamp_last_sample {};
   hrt_abstime _timestamp_last_write {};
   hrt_abstime _timestamp_last_speed {};
+  hrt_abstime _timestamp_last_speed_log {};
 };

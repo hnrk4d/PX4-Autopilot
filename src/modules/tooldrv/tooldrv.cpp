@@ -118,7 +118,7 @@ ToolDrv::ToolDrv(const char *port, const speed_t speed)
     _px4_rangefinder_forward(0, distance_sensor_s::ROTATION_FORWARD_FACING),
     _px4_rangefinder_downward(1, distance_sensor_s::ROTATION_DOWNWARD_FACING) {
   strncpy(_port, port, sizeof(_port));
-  _port[sizeof(_port)-1]=0x0;
+  _port[sizeof(_port)-1] = 0x0;
   _speed = speed;
   _px4_rangefinder_forward.set_device_type(DRV_DIST_DEVTYPE_TR24DA100);
   _px4_rangefinder_forward.set_rangefinder_type(distance_sensor_s::MAV_DISTANCE_SENSOR_RADAR);
@@ -134,6 +134,18 @@ ToolDrv::ToolDrv(const char *port, const speed_t speed)
   _px42teensy.reset();
   _timestamp_last_write = hrt_absolute_time();
   _timestamp_last_speed = hrt_absolute_time();
+  _timestamp_last_speed_log = hrt_absolute_time();
+
+  //what is the default cruise speed?
+  param_t cruise_handle = param_find("MPC_XY_CRUISE");
+  if(cruise_handle != PARAM_INVALID) {
+    param_get(cruise_handle, &_cruise_speed);
+    _cruise_speed_default = _cruise_speed;
+    PX4_INFO("default cruise speed: %.2f", (double)_cruise_speed);
+  }
+
+  for(auto &x : _cache_aux) x = -1;
+  for(auto &x : _mission_aux) x = -1;
 }
 
 int ToolDrv::open_serial_port(const char *port, const speed_t speed) {  
@@ -265,18 +277,69 @@ void ToolDrv::run() {
 	if(vehicle_status_dup.arming_state != vehicle_status.arming_state ||
 	   vehicle_status_dup.nav_state != vehicle_status.nav_state ||
 	   vehicle_status_dup.failsafe != vehicle_status.failsafe) {
-	  //if we change to disarmed, we turn off the actuators
-	  if(vehicle_status_dup.arming_state != vehicle_status.arming_state &&
-	     vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_DISARMED
-	     ) {
+	  _arming_state = vehicle_status.arming_state;
+	  _nav_state = vehicle_status.nav_state;
+	  _failsafe = vehicle_status.failsafe;
+
+	  if(!vehicle_status.failsafe &&
+	     vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED &&
+	     vehicle_status_dup.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION &&
+	     vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER) {
+	    //we change from mission into loitering, e.g. pause, remember the last aux settings
+	    for(int i=0; i<6; ++i) _mission_aux[i] = _cache_aux[i];
+	    PX4_INFO("from mission to loitering, save aux");
+	    _paused = true;
+	  }
+
+	  if(_paused &&
+	     vehicle_status_dup.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER &&
+	     vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION) {
+	    //from pause back to mission, we restore aux/actuators
+	    PX4_INFO("from pause back to mission, restore aux");
 	    vehicle_command_s vcmd = {}; // init to 0
 	    vcmd.command = vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR;
-	    vcmd.param1=-1; //all off
-	    vcmd.param2=-1;
-	    vcmd.param3=-1;
-	    vcmd.param4=-1;
-	    vcmd.param5=-1;
-	    vcmd.param6=-1;
+	    vcmd.param1 = _mission_aux[0];
+	    vcmd.param2 = _mission_aux[1];
+	    vcmd.param3 = _mission_aux[2];
+	    vcmd.param4 = _mission_aux[3];
+	    vcmd.param5 = _mission_aux[4];
+	    vcmd.param6 = _mission_aux[5];
+	    vcmd.timestamp = hrt_absolute_time();
+	    _vehicle_command_pub.publish(vcmd);
+	  }
+
+	  if(_paused &&
+	     vehicle_status_dup.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER &&
+	     vehicle_status.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER) {
+	    //we leave pause
+	    PX4_INFO("leave pause");
+	    _paused = false;
+	  }
+
+	  if(vehicle_status_dup.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION &&
+	     vehicle_status.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION) {
+	    //any change from mission state, we reset the cruise speed to default
+	    _cruise_speed = _cruise_speed_default;
+	    PX4_INFO("cruise speed to default %.2f", (double)_cruise_speed);
+	  }
+
+	  if(
+	     //if we change to disarmed, we turn off the actuators
+	     (vehicle_status_dup.arming_state != vehicle_status.arming_state &&
+	      vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_DISARMED
+	      ) ||
+	     //any change from mission state, we turn off the actuators
+	     (vehicle_status_dup.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION &&
+	      vehicle_status.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION)
+	     ){
+	    vehicle_command_s vcmd = {}; // init to 0
+	    vcmd.command = vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR;
+	    vcmd.param1 = -1; //all off
+	    vcmd.param2 = -1;
+	    vcmd.param3 = -1;
+	    vcmd.param4 = -1;
+	    vcmd.param5 = -1;
+	    vcmd.param6 = -1;
 	    vcmd.timestamp = hrt_absolute_time();
 	    _vehicle_command_pub.publish(vcmd);
 	  }
@@ -293,18 +356,17 @@ void ToolDrv::run() {
 	orb_copy(ORB_ID(vehicle_command), vehicle_command_sub, &vehicle_command);
 	if(vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_SPEED) {
 	  if(vehicle_command.param2 >= 0) {
-	    _px42teensy._target_speed = vehicle_command.param2;
-	    _px42teensy._mod |= PckgPX42Teensy::TARGET_SPEED;
-	    PX4_INFO("mission speed change: %.2f", (double)_px42teensy._target_speed);
+	    _cruise_speed = vehicle_command.param2;
+	    PX4_INFO("mission speed change: %.2f", (double)_cruise_speed);
 	  }
 	}
 	if(vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR) {
-	  _px42teensy._aux[0] = vehicle_command.param1;
-	  _px42teensy._aux[1] = vehicle_command.param2;
-	  _px42teensy._aux[2] = vehicle_command.param3;
-	  _px42teensy._aux[3] = vehicle_command.param4;
-	  _px42teensy._aux[4] = vehicle_command.param5;
-	  _px42teensy._aux[5] = vehicle_command.param6;
+	  _cache_aux[0] = _px42teensy._aux[0] = vehicle_command.param1;
+	  _cache_aux[1] = _px42teensy._aux[1] = vehicle_command.param2;
+	  _cache_aux[2] = _px42teensy._aux[2] = vehicle_command.param3;
+	  _cache_aux[3] = _px42teensy._aux[3] = vehicle_command.param4;
+	  _cache_aux[4] = _px42teensy._aux[4] = vehicle_command.param5;
+	  _cache_aux[5] = _px42teensy._aux[5] = vehicle_command.param6;
 	  _px42teensy._mod |= PckgPX42Teensy::AUX1 | PckgPX42Teensy::AUX2 | PckgPX42Teensy::AUX3 | PckgPX42Teensy::AUX4 | PckgPX42Teensy::AUX5 | PckgPX42Teensy::AUX6;
 	  _px42teensy._test = false;
  	  PX4_INFO("actuators: %.2f %.2f %.2f %.2f %.2f %.2f",
@@ -347,7 +409,12 @@ void ToolDrv::run() {
 	  _px42teensy._actual_speed = sqrt(vehicle_local_position.vx*vehicle_local_position.vx + vehicle_local_position.vy*vehicle_local_position.vy);
 	  _px42teensy._mod |= PckgPX42Teensy::ACTUAL_SPEED;
 	   _timestamp_last_speed = hrt_absolute_time();
-	   //PX4_INFO("vehicle speed: %.2f %.2f", (double)vehicle_local_position.vx, (double)vehicle_local_position.vy);
+	   if(hrt_elapsed_time(&_timestamp_last_speed_log) > 5000000) {
+	     _timestamp_last_speed_log = hrt_absolute_time();
+	     PX4_INFO("vehicle speed: %.2f %.2f %.2f/%.2f",
+		      (double)vehicle_local_position.vx, (double)vehicle_local_position.vy,
+		      (double)_px42teensy._actual_speed, (double)_cruise_speed);
+	   }
 	}
       }
       /*
@@ -437,6 +504,9 @@ void ToolDrv::run() {
 
     //write
     if (_px42teensy._mod || (hrt_elapsed_time(&_timestamp_last_write) > 5000000)) {
+      //we add the cruise speed in each package by default in case of reconnections 
+      _px42teensy._target_speed = _cruise_speed;
+      _px42teensy._mod |= PckgPX42Teensy::TARGET_SPEED;
       _px42teensy._crc = crc16((char*)&_px42teensy._size, sizeof(_px42teensy)-3*sizeof(uint16_t));
       _timestamp_last_write = hrt_absolute_time();
       //int bytes_written =
