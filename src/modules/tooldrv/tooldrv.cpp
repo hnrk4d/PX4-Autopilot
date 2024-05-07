@@ -281,21 +281,27 @@ void ToolDrv::run() {
 	  _nav_state = vehicle_status.nav_state;
 	  _failsafe = vehicle_status.failsafe;
 
-	  if(!vehicle_status.failsafe &&
+	  if((!vehicle_status_dup.failsafe && vehicle_status.failsafe) || (
 	     vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED &&
 	     vehicle_status_dup.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION &&
-	     vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER) {
-	    //we change from mission into loitering, e.g. pause, remember the last aux settings
+	     vehicle_status.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION)) {
+	    //we change from mission into another mode, e.g. pause, remember the last aux settings
 	    for(int i=0; i<6; ++i) _mission_aux[i] = _cache_aux[i];
-	    PX4_INFO("from mission to loitering, save aux");
+	    PX4_INFO("from mission to pause or into failsafe, save aux:  %.2f %.2f %.2f %.2f %.2f %.2f",
+		     (double)_mission_aux[0], (double)_mission_aux[1], (double)_mission_aux[2],
+		     (double)_mission_aux[3], (double)_mission_aux[4], (double)_mission_aux[5]
+		     );
 	    _paused = true;
 	  }
 
 	  if(_paused &&
-	     vehicle_status_dup.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER &&
+	     vehicle_status_dup.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION &&
 	     vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION) {
-	    //from pause back to mission, we restore aux/actuators
-	    PX4_INFO("from pause back to mission, restore aux");
+	    //back to mission, we restore aux/actuators
+	    PX4_INFO("from pause back to mission, restore aux:  %.2f %.2f %.2f %.2f %.2f %.2f",
+		     (double)_mission_aux[0], (double)_mission_aux[1], (double)_mission_aux[2],
+		     (double)_mission_aux[3], (double)_mission_aux[4], (double)_mission_aux[5]
+		     );
 	    vehicle_command_s vcmd = {}; // init to 0
 	    vcmd.command = vehicle_command_s::VEHICLE_CMD_DO_SET_ACTUATOR;
 	    vcmd.param1 = _mission_aux[0];
@@ -308,9 +314,12 @@ void ToolDrv::run() {
 	    _vehicle_command_pub.publish(vcmd);
 	  }
 
-	  if(_paused &&
-	     vehicle_status_dup.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER &&
-	     vehicle_status.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER) {
+	  if(_paused && (
+			 (vehicle_status_dup.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION &&
+			  vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION) ||
+			 (vehicle_status_dup.arming_state != vehicle_status.arming_state &&
+			  vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_DISARMED)
+			 )){
 	    //we leave pause
 	    PX4_INFO("leave pause");
 	    _paused = false;
@@ -587,7 +596,7 @@ int ToolDrv::print_usage(const char *reason) {
 The module tooldrv supports start/stop/status functionality and runs in the background.
 
 ### Implementation
-The module tooldrv is listening to the vehicle and tool status. If a failsafe status is triggered, the actuators will be turned off. Depending on the tool it collects tool depending information.
+The module tooldrv is listening to the vehicle and tool status. Depending on the tool it collects tool depending information.
 
 ### Examples
 CLI usage example:
