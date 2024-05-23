@@ -476,10 +476,10 @@ void ToolDrv::run() {
 	      }
 	      _tool_status_pub.publish(_msg_tool_status);
 	    }
-	    if(_teensy2px4._mod & PckgTeensy2PX4::DOWNWARD) {
+	    if((_teensy2px4._mod & PckgTeensy2PX4::DOWNWARD) && _teensy2px4._downward_dist >= 0.0f) {
 	      _px4_rangefinder_downward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
 	    }
-	    if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
+	    if((_teensy2px4._mod & PckgTeensy2PX4::FORWARD) && _teensy2px4._forward_dist >= 0.0f) {
 	      _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._forward_dist);	    
 	    }
 	    /*
