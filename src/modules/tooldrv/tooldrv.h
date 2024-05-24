@@ -70,6 +70,10 @@ private:
   PX4Rangefinder _px4_rangefinder_forward;
   PX4Rangefinder _px4_rangefinder_downward;
 
+  //adjust to your range finder model
+  const float sRangFinderMinDistance = 0.15f;
+  const float sRangFinderMaxDistance = 8.00f;
+
   char _port[20] {};
   speed_t _speed {};
   int _file_descriptor{-1};

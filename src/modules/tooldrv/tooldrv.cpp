@@ -121,14 +121,14 @@ ToolDrv::ToolDrv(const char *port, const speed_t speed)
   _port[sizeof(_port)-1] = 0x0;
   _speed = speed;
   _px4_rangefinder_forward.set_device_type(DRV_DIST_DEVTYPE_TR24DA100);
-  _px4_rangefinder_forward.set_rangefinder_type(distance_sensor_s::MAV_DISTANCE_SENSOR_RADAR);
-  _px4_rangefinder_forward.set_min_distance(0.15f);
-  _px4_rangefinder_forward.set_max_distance(50.0f);
+  _px4_rangefinder_forward.set_rangefinder_type(distance_sensor_s::MAV_DISTANCE_SENSOR_LASER);
+  _px4_rangefinder_forward.set_min_distance(sRangFinderMinDistance);
+  _px4_rangefinder_forward.set_max_distance(sRangFinderMaxDistance);
 
   _px4_rangefinder_downward.set_device_type(DRV_DIST_DEVTYPE_TR24DA100);
-  _px4_rangefinder_downward.set_rangefinder_type(distance_sensor_s::MAV_DISTANCE_SENSOR_RADAR);
-  _px4_rangefinder_downward.set_min_distance(0.15f);
-  _px4_rangefinder_downward.set_max_distance(50.0f);
+  _px4_rangefinder_downward.set_rangefinder_type(distance_sensor_s::MAV_DISTANCE_SENSOR_LASER);
+  _px4_rangefinder_downward.set_min_distance(sRangFinderMinDistance);
+  _px4_rangefinder_downward.set_max_distance(sRangFinderMaxDistance);
 
   _timestamp_last_sample = hrt_absolute_time(); //reset time counter
   _px42teensy.reset();
@@ -476,11 +476,21 @@ void ToolDrv::run() {
 	      }
 	      _tool_status_pub.publish(_msg_tool_status);
 	    }
-	    if((_teensy2px4._mod & PckgTeensy2PX4::DOWNWARD) && _teensy2px4._downward_dist >= 0.0f) {
-	      _px4_rangefinder_downward.update(hrt_absolute_time(), _teensy2px4._downward_dist);	    
+	    if(_teensy2px4._mod & PckgTeensy2PX4::DOWNWARD) {
+	      if(_teensy2px4._downward_dist >= 0.0f) {
+		_px4_rangefinder_downward.update(hrt_absolute_time(), _teensy2px4._downward_dist);
+	      }
+	      else {
+		_px4_rangefinder_downward.update(hrt_absolute_time(), sRangFinderMaxDistance, 0);
+	      }
 	    }
-	    if((_teensy2px4._mod & PckgTeensy2PX4::FORWARD) && _teensy2px4._forward_dist >= 0.0f) {
-	      _px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._forward_dist);	    
+	    if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
+	      if(_teensy2px4._forward_dist >= 0.0f) {
+		_px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._forward_dist);
+	      }
+	      else {
+		_px4_rangefinder_forward.update(hrt_absolute_time(), sRangFinderMaxDistance, 0);
+	      }
 	    }
 	    /*
 	    PX4_INFO("teensy2px4: %d - %lu %.2f %.2f [%d %d %d %d %d %d]", (int)_teensy2px4._mod,
