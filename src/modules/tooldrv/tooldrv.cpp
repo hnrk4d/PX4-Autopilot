@@ -474,7 +474,7 @@ void ToolDrv::run() {
 		_px4_rangefinder_downward.update(hrt_absolute_time(), _teensy2px4._downward_dist);
 	      }
 	      else {
-		_px4_rangefinder_downward.update(hrt_absolute_time(), sRangFinderMaxDistance, 0);
+		_px4_rangefinder_downward.update(hrt_absolute_time(), sRangFinderDefMaxDistance, 0);
 	      }
 	    }
 	    if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
@@ -523,7 +523,7 @@ void ToolDrv::run() {
 		}
 	      }
 	      else {
-		_px4_rangefinder_forward.update(hrt_absolute_time(), sRangFinderMaxDistance, 0);
+		_px4_rangefinder_forward.update(hrt_absolute_time(), sRangFinderDefMaxDistance, 0);
 		_in_cp_dist = false; //not in collision
 	      }
 	    }

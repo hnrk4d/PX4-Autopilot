@@ -74,6 +74,7 @@ private:
   //adjust to your range finder model
   const float sRangFinderMinDistance = 0.15f;
   const float sRangFinderMaxDistance = 8.00f;
+  const float sRangFinderDefMaxDistance = 99.00f;
 
   char _port[20] {};
   speed_t _speed {};
