@@ -67,6 +67,7 @@ private:
   uORB::Publication<tool_status_s> _tool_status_pub{ORB_ID(tool_status)};
   uORB::Publication<vehicle_command_s> _vehicle_command_pub{ORB_ID(vehicle_command)};
   tool_status_s _msg_tool_status = {};
+  orb_advert_t _mavlink_log_pub{nullptr};
   PX4Rangefinder _px4_rangefinder_forward;
   PX4Rangefinder _px4_rangefinder_downward;
 
@@ -89,6 +90,12 @@ private:
   float _mission_aux[6] {}; //last aux setting in a mission state
   float _cache_aux[6] {};
   bool _paused = false;
+
+  //collision prevention
+  bool _in_cp_dist = false; //in collsiion distance?
+  float _cp_dist = -1.0f; //from parameter with the same name, see https://docs.px4.io/main/en/computer_vision/collision_prevention.html, negative value indicated disabled
+  float _cp_delay = -1.0f; //ditto
+  hrt_abstime _time_when_collision_detected {};
 
   //This must correspond 1:1 to the PckgTeensy2PX4 structure on the Teensy side!
   struct PckgTeensy2PX4 {

@@ -18,6 +18,7 @@
 //#include <uORB/topics/adc_report.h>
 
 #include <parameters/param.h>
+#include <systemlib/mavlink_log.h>
 
 int ToolDrv::print_status() {
   PX4_INFO("Running");
@@ -135,14 +136,6 @@ ToolDrv::ToolDrv(const char *port, const speed_t speed)
   _timestamp_last_write = hrt_absolute_time();
   _timestamp_last_speed = hrt_absolute_time();
   _timestamp_last_speed_log = hrt_absolute_time();
-
-  //what is the default cruise speed?
-  param_t cruise_handle = param_find("MPC_XY_CRUISE");
-  if(cruise_handle != PARAM_INVALID) {
-    param_get(cruise_handle, &_cruise_speed);
-    _cruise_speed_default = _cruise_speed;
-    PX4_INFO("default cruise speed: %.2f", (double)_cruise_speed);
-  }
 
   for(auto &x : _cache_aux) x = -1;
   for(auto &x : _mission_aux) x = -1;
@@ -487,9 +480,51 @@ void ToolDrv::run() {
 	    if(_teensy2px4._mod & PckgTeensy2PX4::FORWARD) {
 	      if(_teensy2px4._forward_dist >= 0.0f) {
 		_px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._forward_dist);
+		if(_cp_dist >= 0.0f && //cp enabled?
+		   _teensy2px4._forward_dist < _cp_dist) { //in collision?
+		  if(_in_cp_dist) {
+		    //... and a collsiion was dtected before
+		    if(hrt_elapsed_time(&_time_when_collision_detected) > _cp_delay) {
+		      PX4_INFO("cp timer ends");
+		      //... still in collsion after _cp_delay -> we change into HOLD mode and drop a message
+		      _in_cp_dist = false;
+		      vehicle_command_s vcmd{};
+		      vcmd.command = vehicle_command_s::VEHICLE_CMD_DO_SET_MODE;
+		      vcmd.param1 = 1;
+		      vcmd.param2 = 4; //AUTO, see px4_custom_mode.h
+		      vcmd.param3 = 3; //LOITERING
+		      vcmd.timestamp = hrt_absolute_time();
+		      uORB::Publication<vehicle_command_s> vcmd_pub{ORB_ID(vehicle_command)};
+		      vcmd_pub.publish(vcmd);
+		      orb_advert_t mavlink_log_pub = nullptr;
+		      mavlink_log_critical(&mavlink_log_pub, "Collision detected");
+		    }
+		  }
+		  else {
+		    if(vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION || //in any of the following modes?
+		       vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_MANUAL ||
+		       vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_POSCTL ||
+		       vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ALTCTL
+		       ) {
+		      //we start the waiting time in collision
+		      _in_cp_dist = true;
+		      _time_when_collision_detected = hrt_absolute_time();
+		      PX4_INFO("cp timer starts");
+		    }
+		    else {
+		      //collision detection disabled
+		      _in_cp_dist = false;
+		    }
+		  }
+		}
+		else {
+		  //no collision
+		  _in_cp_dist = false;
+		}
 	      }
 	      else {
 		_px4_rangefinder_forward.update(hrt_absolute_time(), sRangFinderMaxDistance, 0);
+		_in_cp_dist = false; //not in collision
 	      }
 	    }
 	    /*
@@ -593,6 +628,26 @@ void ToolDrv::parameters_update(bool force) {
     
     // update parameters from storage
     updateParams();
+
+    //what is the default cruise speed?
+    param_t cruise_handle = param_find("MPC_XY_CRUISE");
+    if(cruise_handle != PARAM_INVALID) {
+      param_get(cruise_handle, &_cruise_speed);
+      _cruise_speed_default = _cruise_speed;
+      PX4_INFO("default cruise speed: %.2f", (double)_cruise_speed);
+    }
+
+    //collision detection
+    param_t cp_dist = param_find("CP_DIST");
+    if(cp_dist != PARAM_INVALID) {
+      param_get(cp_dist, &_cp_dist);
+      PX4_INFO("collision distance: %.2f", (double)_cp_dist);
+    }
+    param_t cp_delay = param_find("CP_DELAY");
+    if(cp_delay != PARAM_INVALID) {
+      param_get(cp_delay, &_cp_delay);
+      PX4_INFO("collision delay: %.2f", (double)_cp_delay);
+    }
   }
 }
 
