@@ -94,8 +94,9 @@ private:
 
   //collision prevention
   bool _in_cp_dist = false; //in collsiion distance?
+  bool _cp_action_done = false; //flags if the collsion action has been taken within the collision condition
   float _cp_dist = -1.0f; //from parameter with the same name, see https://docs.px4.io/main/en/computer_vision/collision_prevention.html, negative value indicated disabled
-  float _cp_delay = -1.0f; //ditto
+  hrt_abstime _cp_delay = -1; //ditto, but im µsec
   hrt_abstime _time_when_collision_detected {};
 
   //This must correspond 1:1 to the PckgTeensy2PX4 structure on the Teensy side!

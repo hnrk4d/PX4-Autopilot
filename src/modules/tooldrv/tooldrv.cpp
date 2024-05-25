@@ -483,48 +483,53 @@ void ToolDrv::run() {
 		if(_cp_dist >= 0.0f && //cp enabled?
 		   _teensy2px4._forward_dist < _cp_dist) { //in collision?
 		  if(_in_cp_dist) {
-		    //... and a collsiion was dtected before
-		    if(hrt_elapsed_time(&_time_when_collision_detected) > _cp_delay) {
-		      PX4_INFO("cp timer ends");
-		      //... still in collsion after _cp_delay -> we change into HOLD mode and drop a message
-		      _in_cp_dist = false;
+		    //... and a collision was detected before?
+		    if(hrt_elapsed_time(&_time_when_collision_detected) > _cp_delay && !_cp_action_done) {
+		      //... still in collision after _cp_delay -> we change into HOLD mode and drop a message
+		      /* TODO
 		      vehicle_command_s vcmd{};
 		      vcmd.command = vehicle_command_s::VEHICLE_CMD_DO_SET_MODE;
 		      vcmd.param1 = 1;
 		      vcmd.param2 = 4; //AUTO, see px4_custom_mode.h
 		      vcmd.param3 = 3; //LOITERING
 		      vcmd.timestamp = hrt_absolute_time();
-		      uORB::Publication<vehicle_command_s> vcmd_pub{ORB_ID(vehicle_command)};
+		      uORB::Publication<vehicle_command_s> vcmd_pub{ORB_ID(vehicle_command)}; //TODO
 		      vcmd_pub.publish(vcmd);
+		      */
 		      orb_advert_t mavlink_log_pub = nullptr;
 		      mavlink_log_critical(&mavlink_log_pub, "Collision detected");
+		      _cp_action_done = true;
 		    }
 		  }
 		  else {
-		    if(vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION || //in any of the following modes?
-		       vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_MANUAL ||
-		       vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_POSCTL ||
-		       vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ALTCTL
+		    if(vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION //in any of the following modes?
+		       || vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_MANUAL
+		       || vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_POSCTL
+		       || vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ALTCTL
 		       ) {
 		      //we start the waiting time in collision
 		      _in_cp_dist = true;
+		      _cp_action_done = false;
 		      _time_when_collision_detected = hrt_absolute_time();
 		      PX4_INFO("cp timer starts");
 		    }
 		    else {
 		      //collision detection disabled
 		      _in_cp_dist = false;
+		      _cp_action_done = false;
 		    }
 		  }
 		}
 		else {
 		  //no collision
 		  _in_cp_dist = false;
+		  _cp_action_done = false;
 		}
 	      }
 	      else {
 		_px4_rangefinder_forward.update(hrt_absolute_time(), sRangFinderDefMaxDistance, 0);
 		_in_cp_dist = false; //not in collision
+		_cp_action_done = false;
 	      }
 	    }
 	    /*
@@ -645,8 +650,10 @@ void ToolDrv::parameters_update(bool force) {
     }
     param_t cp_delay = param_find("CP_DELAY");
     if(cp_delay != PARAM_INVALID) {
-      param_get(cp_delay, &_cp_delay);
-      PX4_INFO("collision delay: %.2f", (double)_cp_delay);
+      float d =0.0f;
+      param_get(cp_delay, &d);
+      PX4_INFO("collision delay: %.2f", (double)d);
+      _cp_delay = (hrt_abstime)(d*1000000.0f);
     }
   }
 }
