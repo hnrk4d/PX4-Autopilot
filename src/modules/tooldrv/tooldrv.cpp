@@ -481,49 +481,47 @@ void ToolDrv::run() {
 	      if(_teensy2px4._forward_dist >= 0.0f) {
 		_px4_rangefinder_forward.update(hrt_absolute_time(), _teensy2px4._forward_dist);
 		if(_cp_dist >= 0.0f && //cp enabled?
-		   _teensy2px4._forward_dist < _cp_dist) { //in collision?
-		  if(_in_cp_dist) {
-		    //... and a collision was detected before?
-		    if(hrt_elapsed_time(&_time_when_collision_detected) > _cp_delay && !_cp_action_done) {
-		      //... still in collision after _cp_delay -> we change into HOLD mode and drop a message
-		      /* TODO
-		      vehicle_command_s vcmd{};
-		      vcmd.command = vehicle_command_s::VEHICLE_CMD_DO_SET_MODE;
-		      vcmd.param1 = 1;
-		      vcmd.param2 = 4; //AUTO, see px4_custom_mode.h
-		      vcmd.param3 = 3; //LOITERING
-		      vcmd.timestamp = hrt_absolute_time();
-		      uORB::Publication<vehicle_command_s> vcmd_pub{ORB_ID(vehicle_command)}; //TODO
-		      vcmd_pub.publish(vcmd);
-		      */
-		      orb_advert_t mavlink_log_pub = nullptr;
-		      mavlink_log_critical(&mavlink_log_pub, "Collision detected");
-		      _cp_action_done = true;
+		   hrt_elapsed_time(&vehicle_status.nav_state_timestamp) > 5000000 && //wait x sec until collision detection activates, esp when starting and landing
+		   vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED &&
+		   (vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION //in any of the following modes?
+		    //|| vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_MANUAL
+		    //|| vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_POSCTL
+		    //|| vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ALTCTL
+		    )) {
+		  if(_teensy2px4._forward_dist < _cp_dist) { //in collision?
+		    if(_in_cp_dist) {
+		      //... and a collision was detected before?
+		      if(hrt_elapsed_time(&_time_when_collision_detected) > _cp_delay && !_cp_action_done) {
+			//... still in collision after _cp_delay -> we change into HOLD mode and drop a message
+			vehicle_command_s vcmd{};
+			vcmd.command = vehicle_command_s::VEHICLE_CMD_DO_SET_MODE;
+			vcmd.param1 = 1;
+			vcmd.param2 = 4; //AUTO, see px4_custom_mode.h
+			vcmd.param3 = 3; //LOITERING
+			vcmd.timestamp = hrt_absolute_time();
+			uORB::Publication<vehicle_command_s> vcmd_pub{ORB_ID(vehicle_command)}; //TODO
+			vcmd_pub.publish(vcmd);
+			orb_advert_t mavlink_log_pub = nullptr;
+			mavlink_log_critical(&mavlink_log_pub, "Collision detected");
+			_cp_action_done = true;
+		      }
 		    }
-		  }
-		  else {
-		    if(vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION //in any of the following modes?
-		       || vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_MANUAL
-		       || vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_POSCTL
-		       || vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_ALTCTL
-		       ) {
+		    else {
 		      //we start the waiting time in collision
 		      _in_cp_dist = true;
 		      _cp_action_done = false;
 		      _time_when_collision_detected = hrt_absolute_time();
 		      PX4_INFO("cp timer starts");
 		    }
-		    else {
-		      //collision detection disabled
+		  }
+		  else {
+		    //no collision
+		    _cp_action_done = false;
+		    if(_in_cp_dist) {
 		      _in_cp_dist = false;
-		      _cp_action_done = false;
+		      PX4_INFO("collision dist off");
 		    }
 		  }
-		}
-		else {
-		  //no collision
-		  _in_cp_dist = false;
-		  _cp_action_done = false;
 		}
 	      }
 	      else {
